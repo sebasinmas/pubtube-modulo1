@@ -1,6 +1,6 @@
 # Guía de Roles - Proyecto SCRUM
 
-## Información de Contacto (Sprint 1)
+## Información de Contacto 
 | Nombre | Rol | Contacto / Correo |
 | :--- | :--- | :--- |
 | Sebastián Bustos | Product Owner (PO) | s.bustos12@ufromail.cl |
