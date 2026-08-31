@@ -1,0 +1,84 @@
+services:
+
+  # ─────────────────────────────────────────────
+  # API – Módulo 1: Gestión de Contenidos
+  # ─────────────────────────────────────────────
+  module1-content:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: module1-content
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT}
+      MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS}
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - module1-net
+
+  # ─────────────────────────────────────────────
+  # Base de Datos – PostgreSQL
+  # ─────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: module1-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./src/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - module1-net
+
+  # ─────────────────────────────────────────────
+  # Almacenamiento de Objetos – MinIO
+  # ─────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: module1-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    networks:
+      - module1-net
+
+# ─────────────────────────────────────────────
+# Volúmenes persistentes
+# ─────────────────────────────────────────────
+volumes:
+  pg_data:
+    driver: local
+  minio_data:
+    driver: local
+
+# ─────────────────────────────────────────────
+# Red interna del módulo
+# ─────────────────────────────────────────────
+networks:
+  module1-net:
+    driver: bridge
