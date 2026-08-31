@@ -1,0 +1,54 @@
+{
+  "title": "VideoUploadedEvent",
+  "description": "Evento emitido tras completar la carga y almacenamiento de un archivo de video.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Identificador unico del evento."
+    },
+    "type": {
+      "type": "string",
+      "description": "Routing key / tipo de evento."
+    },
+    "version": {
+      "type": "integer",
+      "description": "Versión del esquema del payload."
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Momento de emisión del evento."
+    },
+    "correlationId": {
+      "type": "string",
+      "description": "Agrupa todos los eventos de un mismo flujo."
+    },
+    "causationId": {
+      "type": "string",
+      "description": "Evento que causó este evento."
+    },
+    "source": {
+      "type": "string",
+      "description": "Modulo emisor."
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "contentId": {
+          "type": "string",
+          "description": "ID unico del contenido en la base de datos en estado borrador."
+        },
+        "checksum": {
+          "type": "string",
+          "description": "Hash SHA-256 del archivo de video para garantizar la idempotencia."
+        },
+        "storageUrl": {
+          "type": "string",
+          "description": "URL de acceso persistente al archivo de video en MinIO/S3."
+        }
+      },
+      "required": ["contentId", "checksum", "storageUrl"]
+    }
+  },
+  "required": ["id", "type", "version", "timestamp", "correlationId", "causationId", "source", "payload"]
+}
