@@ -1,0 +1,42 @@
+{
+  // ── Formateo ────────────────────────────────────────────────────────────
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  // ── ESLint ───────────────────────────────────────────────────────────────
+  // Aplica correcciones automáticas de ESLint al guardar (feedback inmediato)
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.validate": ["typescript"],
+
+  // ── TypeScript ───────────────────────────────────────────────────────────
+  // Usa el compilador TypeScript del proyecto en lugar del bundled de VSCode.
+  // Garantiza consistencia con el tsconfig.json del repo.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+
+  // ── Explorador de archivos ────────────────────────────────────────────────
+  "files.exclude": {
+    "dist/": true,
+    ".tsbuildinfo": true,
+    "coverage/": true
+  },
+  "search.exclude": {
+    "dist/**": true,
+    "node_modules/**": true,
+    "coverage/**": true,
+    "pnpm-lock.yaml": true
+  },
+
+  // ── Extensiones recomendadas ─────────────────────────────────────────────
+  // Se complementa con .vscode/extensions.json
+  "oxc.enable": true
+}

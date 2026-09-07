@@ -1,2 +1,31 @@
+# ── Build outputs ────────────────────────────────────────────
+dist/
+*.tsbuildinfo
+
+# ── Dependencias ─────────────────────────────────────────────
 node_modules/
+
+# ── Variables de entorno (nunca commitear secretos) ──────────
 .env
+.env.local
+.env.*.local
+
+# ── Cobertura de tests ────────────────────────────────────────
+coverage/
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ── Sistema operativo ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editors ──────────────────────────────────────────────────
+*.swp
+*.swo
+.idea/
+
+# ── Docker volumes locales (no son código) ────────────────────
+docker-volumes/

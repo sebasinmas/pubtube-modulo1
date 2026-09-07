@@ -14,7 +14,9 @@ function createMockDb(videoEncontrado: any) {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue(videoEncontrado ? [videoEncontrado] : []),
+          limit: vi
+            .fn()
+            .mockResolvedValue(videoEncontrado ? [videoEncontrado] : []),
         }),
       }),
     }),
@@ -23,14 +25,15 @@ function createMockDb(videoEncontrado: any) {
 }
 
 describe('VideoStateService.marcarComoProgramado', () => {
-  
   it('rechaza si el video está en borrador', async () => {
     const videoFalso = { id: 'abc', status: 'borrador' };
     const mockDb = createMockDb(videoFalso);
     const mockBroker = { publish: vi.fn() };
     const service = new VideoStateService(mockDb as any, mockBroker as any);
-    
-    await expect(service.marcarComoProgramado('abc', new Date('2027-01-01'))).rejects.toThrow(BadRequestException);
+
+    await expect(
+      service.marcarComoProgramado('abc', new Date('2027-01-01')),
+    ).rejects.toThrow(BadRequestException);
 
     expect(mockBroker.publish).not.toHaveBeenCalled();
     expect(mockDb.update).not.toHaveBeenCalled();
@@ -42,8 +45,10 @@ describe('VideoStateService.marcarComoProgramado', () => {
     const mockBroker = { publish: vi.fn() };
     const service = new VideoStateService(mockDb as any, mockBroker as any);
 
-    const fechaPasada = new Date('2020-01-01'); 
-    await expect(service.marcarComoProgramado('abc', fechaPasada)).rejects.toThrow(BadRequestException);
+    const fechaPasada = new Date('2020-01-01');
+    await expect(
+      service.marcarComoProgramado('abc', fechaPasada),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('actualiza el estado a "programado" y guarda la fecha si los datos son válidos', async () => {
@@ -60,7 +65,7 @@ describe('VideoStateService.marcarComoProgramado', () => {
       status: 'programado',
       scheduled_at: fechaFutura,
     });
-    
+
     expect(updateChain.set().where).toHaveBeenCalled();
   });
 });
