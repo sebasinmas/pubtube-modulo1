@@ -17,12 +17,10 @@ export class VideoStateService {
     if (video.status !== 'listo') {
       throw new BadRequestException('Solo se puede programar un video que esté listo');
     }
-
-
     if (scheduledAt < new Date()) {
       throw new BadRequestException('La fecha de programación debe ser futura');
     }
 
-
+    await this.db.update(videos).set({ status: 'programado', scheduled_at: scheduledAt }).where(eq(videos.id, contentId));
   }
 }
