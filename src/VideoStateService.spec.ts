@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { VideoStateService } from './video-state.service';
+import { VideoStateService } from './VideoStateService.js';
 
 describe('VideoStateService - Transición Borrador a Listo', () => {
   let service: VideoStateService;
