@@ -22,14 +22,14 @@ describe('VideoUploadController - Inicializacion de subida', () => {
   it('debe rechazar formatos invalidos (.avi) con error 400', async () => {
     const payloadInvalido = { filename: 'vacaciones.avi', mimeType: 'video/x-msvideo' };
 
-    await expect(controller.initUpload(payloadInvalido))
+   await expect(controller.initUpload(payloadInvalido, 'test-corr-id-123'))
       .rejects.toThrow(BadRequestException);
   });
 
   it('debe aceptar formatos validos (.mp4) y crear el borrador', async () => {
     const payloadValido = { filename: 'tutorial.mp4', mimeType: 'video/mp4' };
 
-    const result = await controller.initUpload(payloadValido);
+    const result = await controller.initUpload(payloadValido, 'test-corr-id-123');
 
     // revisa que retorne 201 y el id
     expect(result.status).toBe(201);

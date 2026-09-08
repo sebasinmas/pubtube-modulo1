@@ -1,7 +1,8 @@
-import { Controller, Post, Body, BadRequestException, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException, HttpCode, Logger, Headers } from '@nestjs/common';
 
 @Controller('api/content') 
 export class VideoUploadController {
+  private readonly logger = new Logger(VideoUploadController.name);
   
   constructor(
     private readonly minioService: any,
@@ -10,7 +11,11 @@ export class VideoUploadController {
 
   @Post('init')
   @HttpCode(201)
-  async initUpload(@Body() payload: any) {
+  async initUpload(
+    @Body() payload: any,
+    @Headers('x-correlation-id') correlationId: string
+  ) {
+    this.logger.log(`Iniciando subida [CorrelationID: ${correlationId || 'N/A'}]`);
 
     const formatosValidos = ['video/mp4', 'video/quicktime'];
     
@@ -24,7 +29,7 @@ export class VideoUploadController {
       filename: payload.filename,
       status: 'borrador' 
     });
-
+    this.logger.log(`Borrador creado [SessionID: ${uploadSessionId}]`);
     return {
       status: 201,
       uploadSessionId,
