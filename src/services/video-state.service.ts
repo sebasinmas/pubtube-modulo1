@@ -17,7 +17,9 @@ export class VideoStateService {
   async marcarComoListo(contentId: string, metadata: MetadataPayload) {
     // Validacion estricta : falla
     if (!metadata || !metadata.title || !metadata.visibility) {
-      throw new BadRequestException('Metadata incompleta para pasar a estado listo');
+      throw new BadRequestException(
+        'Metadata incompleta para pasar a estado listo',
+      );
     }
 
     const nuevoEstado = 'listo';
