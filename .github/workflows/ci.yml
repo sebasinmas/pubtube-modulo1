@@ -1,0 +1,201 @@
+name: CI — PubTube Módulo 1
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+
+# Cancela ejecuciones anteriores del mismo PR para ahorrar minutos de CI
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '26'
+  PNPM_VERSION: '11'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 1: Instalación de dependencias con caché
+  # Los jobs posteriores reutilizan el store de pnpm cacheado por actions/setup-node
+  # ──────────────────────────────────────────────────────────────────────────
+  setup:
+    name: 📦 Install Dependencies
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout código fuente
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Configurar Node.js con caché de pnpm integrada
+        # El hash del pnpm-lock.yaml se usa como clave → invalidación automática
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Instalar dependencias (frozen-lockfile garantiza reproducibilidad)
+        run: pnpm install --frozen-lockfile
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 2: Análisis Estático
+  # Corre en PARALELO con typecheck y unit-tests.
+  # Falla rápido: oxlint (Rust ~50ms) bloquea antes de invocar ESLint (~5s).
+  # ──────────────────────────────────────────────────────────────────────────
+  static-analysis:
+    name: 🔍 Static Analysis
+    runs-on: ubuntu-24.04
+    needs: setup
+
+    steps:
+      - name: Checkout código fuente
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Configurar Node.js (reutiliza caché del job setup)
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      # ── PASO 1: Prettier ──────────────────────────────────────────────────
+      # --check no modifica archivos; falla con exit code 1 si hay violaciones
+      - name: 🎨 Prettier — Verificar formato
+        run: pnpm run format:check
+
+      # ── PASO 2: oxlint (Rust) ─────────────────────────────────────────────
+      # Primera línea de defensa (~50ms). Si falla, no se ejecutan los pasos
+      # más lentos → comportamiento fail-fast intencional.
+      - name: ⚡ oxlint — Linting estructural
+        run: pnpm run lint
+
+      # ── PASO 3: Ciclos de dependencias ───────────────────────────────────
+      # Detecta CircularDependencyException de NestJS antes del runtime.
+      - name: 🔄 madge — Detectar ciclos entre módulos
+        run: pnpm run check:cycles
+
+      # ── PASO 4: ESLint type-aware ─────────────────────────────────────────
+      # Solo reglas semánticas que requieren el grafo de tipos completo.
+      # Más lento que oxlint, pero detecta no-misused-promises, require-await.
+      - name: 🔬 ESLint — Reglas semánticas con type information
+        run: pnpm run lint:types
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 3: Verificación del compilador TypeScript
+  # Corre en PARALELO con static-analysis y unit-tests.
+  # ──────────────────────────────────────────────────────────────────────────
+  typecheck:
+    name: 🔷 TypeScript Typecheck
+    runs-on: ubuntu-24.04
+    needs: setup
+
+    steps:
+      - name: Checkout código fuente
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Configurar Node.js (reutiliza caché del job setup)
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      # Caché del build incremental de TypeScript.
+      # Reduce el tiempo de tsc en ~60% en ejecuciones subsiguientes.
+      - name: Restaurar caché de build incremental TypeScript
+        uses: actions/cache@v4
+        with:
+          path: .tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ hashFiles('src/**/*.ts', 'tsconfig.json') }}
+          restore-keys: |
+            tsbuildinfo-${{ runner.os }}-
+
+      - name: 🔷 tsc --noEmit — Verificación completa de tipos
+        run: pnpm run typecheck
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 4: Tests Unitarios (Vitest)
+  # Corre en PARALELO con static-analysis y typecheck.
+  # ──────────────────────────────────────────────────────────────────────────
+  unit-tests:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-24.04
+    needs: setup
+
+    steps:
+      - name: Checkout código fuente
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Configurar Node.js (reutiliza caché del job setup)
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: 🧪 Vitest — Tests unitarios con cobertura
+        run: pnpm run test:cov
+
+      # Sube el reporte de cobertura como artefacto del workflow.
+      # Visualizable en la pestaña "Summary" del PR sin servicios externos.
+      - name: 📊 Subir reporte de cobertura
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 5: Gate Final — Branch Protection Rule única
+  # Solo se configura este job como required check en GitHub > Settings > Branches.
+  # Falla si CUALQUIER job anterior falló.
+  # ──────────────────────────────────────────────────────────────────────────
+  ci-gate:
+    name: ✅ CI Gate
+    runs-on: ubuntu-24.04
+    needs: [static-analysis, typecheck, unit-tests]
+    # if: always() permite que este job corra incluso cuando los anteriores fallan,
+    # para poder reportar el resultado correcto al Branch Protection de GitHub.
+    if: always()
+
+    steps:
+      - name: Verificar resultados de todos los jobs
+        run: |
+          if [[ "${{ needs.static-analysis.result }}" != "success" ]] || \
+             [[ "${{ needs.typecheck.result }}" != "success" ]] || \
+             [[ "${{ needs.unit-tests.result }}" != "success" ]]; then
+            echo "❌ CI FALLÓ."
+            echo "  static-analysis : ${{ needs.static-analysis.result }}"
+            echo "  typecheck       : ${{ needs.typecheck.result }}"
+            echo "  unit-tests      : ${{ needs.unit-tests.result }}"
+            exit 1
+          fi
+          echo "✅ Todos los checks de CI pasaron exitosamente."

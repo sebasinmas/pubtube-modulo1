@@ -1,6 +1,11 @@
-import { Injectable, BadRequestException, NotFoundException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  Inject,
+} from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { videos } from './db/schema.js'; 
+import { videos } from './db/schema.js';
 
 @Injectable()
 export class VideoStateService {
@@ -12,15 +17,24 @@ export class VideoStateService {
   // marcarComoListo va aqui
 
   async marcarComoProgramado(contentId: string, scheduledAt: Date) {
-    const [video] = await this.db.select().from(videos).where(eq(videos.id, contentId)).limit(1);
+    const [video] = await this.db
+      .select()
+      .from(videos)
+      .where(eq(videos.id, contentId))
+      .limit(1);
 
     if (video.status !== 'listo') {
-      throw new BadRequestException('Solo se puede programar un video que esté listo');
+      throw new BadRequestException(
+        'Solo se puede programar un video que esté listo',
+      );
     }
     if (scheduledAt < new Date()) {
       throw new BadRequestException('La fecha de programación debe ser futura');
     }
 
-    await this.db.update(videos).set({ status: 'programado', scheduled_at: scheduledAt }).where(eq(videos.id, contentId));
+    await this.db
+      .update(videos)
+      .set({ status: 'programado', scheduled_at: scheduledAt })
+      .where(eq(videos.id, contentId));
   }
 }
