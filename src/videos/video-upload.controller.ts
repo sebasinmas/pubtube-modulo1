@@ -6,6 +6,8 @@ import {
   HttpCode,
   Logger,
   Headers,
+  Get,
+  Param,
 } from '@nestjs/common';
 
 @Controller('api/content')
@@ -47,6 +49,23 @@ export class VideoUploadController {
     return {
       status: 201,
       uploadSessionId,
+    };
+  }
+
+  @Get('upload/:sessionId/status')
+  async getUploadStatus(
+    @Param('sessionId') sessionId: string,
+    @Headers('x-correlation-id') correlationId: string,
+  ) {
+    this.logger.log(
+      `Consultando progreso de sesion: ${sessionId} [CorrelationID: ${correlationId || 'N/A'}]`,
+    );
+
+    const parts = await this.minioService.listParts(sessionId);
+
+    return {
+      status: 200,
+      parts,
     };
   }
 }
