@@ -70,4 +70,40 @@ describe('VideoUploadController - Inicializacion de subida', () => {
       expect(mockMinio.listParts).toHaveBeenCalledWith('sesion-abc-123');
     });
   });
+
+  describe('Finalizacion de subida (Ensamblaje)', () => {
+    it('debe ensamblar en MinIO, actualizar Drizzle y mantener estado borrador', async () => {
+      mockMinio.completeMultipartUpload = vi.fn().mockResolvedValue(true);
+      mockDb.actualizarVideo = vi.fn().mockResolvedValue({
+        contentId: 'uuid-final-1234',
+        status: 'borrador',
+      });
+
+      const payloadFinal = {
+        parts: [
+          { PartNumber: 1, ETag: '"etag-1"' },
+          { PartNumber: 2, ETag: '"etag-2"' },
+        ],
+      };
+
+      const result = await controller.completeUpload(
+        'sesion-abc-123',
+        payloadFinal,
+        'test-corr-id-777',
+      );
+
+      expect(result.status).toBe(200);
+      expect(result.contentId).toBe('uuid-final-1234');
+
+      expect(mockMinio.completeMultipartUpload).toHaveBeenCalledWith(
+        'sesion-abc-123',
+        payloadFinal.parts,
+      );
+
+      expect(mockDb.actualizarVideo).toHaveBeenCalledWith(
+        'sesion-abc-123',
+        expect.objectContaining({ status: 'borrador' }),
+      );
+    });
+  });
 });

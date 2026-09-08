@@ -68,4 +68,28 @@ export class VideoUploadController {
       parts,
     };
   }
+  @Post('upload/:sessionId/complete')
+  @HttpCode(200)
+  async completeUpload(
+    @Param('sessionId') sessionId: string,
+    @Body() payload: { parts: any[] },
+    @Headers('x-correlation-id') correlationId: string,
+  ) {
+    this.logger.log(
+      `Iniciando ensamblaje de chunks [SessionID: ${sessionId}] [CorrelationID: ${correlationId || 'N/A'}]`,
+    );
+
+    await this.minioService.completeMultipartUpload(sessionId, payload.parts);
+
+    const result = await this.dbService.actualizarVideo(sessionId, {
+      status: 'borrador',
+    });
+
+    this.logger.log(`Ensamblaje exitoso. [ContentID: ${result.contentId}]`);
+
+    return {
+      status: 200,
+      contentId: result.contentId,
+    };
+  }
 }
