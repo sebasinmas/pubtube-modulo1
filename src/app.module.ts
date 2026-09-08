@@ -5,9 +5,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { HttpModule } from '@nestjs/axios';
 import { VideoWorkerService } from './videos/video-worker.service.js';
 import { YoutubeService } from './videos/youtube.service.js';
+import { MinioModule } from './minio/minio.module.js';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), HttpModule],
+  imports: [ScheduleModule.forRoot(), HttpModule, MinioModule],
   controllers: [AppController],
   providers: [
     VideoWorkerService,
