@@ -20,28 +20,35 @@ export class VideoWorkerService {
         .select()
         .from(videos)
         .where(
-          and(
-            eq(videos.status, 'programado'),
-            lte(videos.scheduled_at, ahora) 
-          )
+          and(eq(videos.status, 'programado'), lte(videos.scheduled_at, ahora)),
         );
-      if (!videosPendientes || videosPendientes.length === 0) { return; }
-      this.logger.log(`Se encontraron ${videosPendientes.length} videos para procesar.`);
+      if (!videosPendientes || videosPendientes.length === 0) {
+        return;
+      }
+      this.logger.log(
+        `Se encontraron ${videosPendientes.length} videos para procesar.`,
+      );
 
       for (const video of videosPendientes) {
         try {
-          const response = await this.youtubeService.verificarDisponibilidad(video.youtube_url);
+          const response = await this.youtubeService.verificarDisponibilidad(
+            video.youtube_url,
+          );
 
           if (response.status === 200) {
             await this.db
               .update(videos)
               .set({ status: 'publicado' })
               .where(eq(videos.id, video.id));
-              
-            this.logger.log(`Video ${video.id} publicado con éxito en la base de datos.`);
+
+            this.logger.log(
+              `Video ${video.id} publicado con éxito en la base de datos.`,
+            );
           }
         } catch (error) {
-          this.logger.error(`Error de red al consultar YouTube para el video ${video.id}`);
+          this.logger.error(
+            `Error de red al consultar YouTube para el video ${video.id}`,
+          );
         }
       }
     } catch (error) {

@@ -7,14 +7,11 @@ import { VideoWorkerService } from './videos/video-worker.service.js';
 import { YoutubeService } from './videos/youtube.service.js';
 
 @Module({
-  imports: [
-    ScheduleModule.forRoot(),
-    HttpModule,
-  ],
+  imports: [ScheduleModule.forRoot(), HttpModule],
   controllers: [AppController],
   providers: [
     VideoWorkerService,
-    {provide: 'YOUTUBE_SERVICE', useClass: YoutubeService}
+    { provide: 'YOUTUBE_SERVICE', useClass: YoutubeService },
   ],
 })
 export class AppModule {}
