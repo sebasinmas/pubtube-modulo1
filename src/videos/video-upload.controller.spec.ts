@@ -49,4 +49,25 @@ describe('VideoUploadController - Inicializacion de subida', () => {
       expect.objectContaining({ status: 'borrador' }),
     );
   });
+
+  describe('Consulta de progreso de subida', () => {
+    it('debe retornar la lista de partes completadas (3 partes)', async () => {
+      mockMinio.listParts = vi.fn().mockResolvedValue([
+        { PartNumber: 1, ETag: '"etag-1"', Size: 5242880 },
+        { PartNumber: 2, ETag: '"etag-2"', Size: 5242880 },
+        { PartNumber: 3, ETag: '"etag-3"', Size: 2500000 },
+      ]);
+
+      const result = await controller.getUploadStatus(
+        'sesion-abc-123',
+        'corr-id-999',
+      );
+
+      expect(result.status).toBe(200);
+      expect(result.parts.length).toBe(3);
+      expect(result.parts[0].PartNumber).toBe(1);
+
+      expect(mockMinio.listParts).toHaveBeenCalledWith('sesion-abc-123');
+    });
+  });
 });
