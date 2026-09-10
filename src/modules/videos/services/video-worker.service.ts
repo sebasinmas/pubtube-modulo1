@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { eq, and, lte } from 'drizzle-orm';
-import { videos } from '../db/schema.js';
+import { videos } from '../../../db/schema.js';
 
 @Injectable()
 export class VideoWorkerService {
