@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VideoUploadController } from './video-upload.controller.js';
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  UnsupportedMediaTypeException,
+  PayloadTooLargeException,
+} from '@nestjs/common';
 
 vi.mock('node:crypto', () => ({
   randomUUID: () => 'uuid-fixed-1234',
@@ -23,6 +27,7 @@ describe('VideoUploadController', () => {
       createMultipartUpload: vi.fn().mockResolvedValue('minio-upload-id-777'),
       listParts: vi.fn().mockResolvedValue([]),
       completeMultipartUpload: vi.fn().mockResolvedValue(true),
+      calcularChecksumSha256: vi.fn().mockResolvedValue('checksum-fake-abc123'),
     };
 
     mockVideoRepository = {
@@ -35,10 +40,12 @@ describe('VideoUploadController', () => {
         object_key: 'sesion-abc-123/video.mp4',
         minio_upload_id: 'minio-upload-id-777',
         status: 'borrador',
+        size_bytes: 10_485_760,
       }),
       marcarComoSubido: vi.fn().mockResolvedValue({
         id: 'uuid-final-1234',
         status: 'borrador',
+        size_bytes: 10_485_760,
       }),
     };
 
@@ -50,7 +57,6 @@ describe('VideoUploadController', () => {
       validar: vi.fn().mockResolvedValue(true),
     };
 
-    // Orden real del constructor: minioService, videoRepository, broker (MESSAGE_BROKER), sessionValidator (SESSION_VALIDATOR)
     controller = new VideoUploadController(
       mockMinio,
       mockVideoRepository,
@@ -69,6 +75,7 @@ describe('VideoUploadController', () => {
         object_key: 'sess-123/part-1',
         minio_upload_id: 'minio-upload-id-777',
         status: 'borrador',
+        size_bytes: 5000,
       });
 
       const resultado = await controller.getPresignedUrl(sessionId, partNumber);
@@ -87,22 +94,52 @@ describe('VideoUploadController', () => {
   });
 
   describe('POST /init (Inicializacion de subida)', () => {
-    it('debe rechazar formatos invalidos (.avi) con error 400', async () => {
+    it('debe rechazar formatos invalidos (.avi) con error 415', async () => {
       const payloadInvalido = {
         filename: 'vacaciones.avi',
         mimeType: 'video/x-msvideo',
+        sizeBytes: 1024,
       };
 
       await expect(
         controller.initUpload(payloadInvalido, 'test-corr-id-123'),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(UnsupportedMediaTypeException);
 
       expect(mockSessionValidator.validar).toHaveBeenCalled();
       expect(mockVideoRepository.crearBorrador).not.toHaveBeenCalled();
     });
 
+    it('debe rechazar un archivo que excede el tamaño máximo con error 413', async () => {
+      const payloadEnorme = {
+        filename: 'pelicula-completa.mp4',
+        mimeType: 'video/mp4',
+        sizeBytes: 3 * 1024 * 1024 * 1024,
+      };
+
+      await expect(
+        controller.initUpload(payloadEnorme, 'test-corr-id-123'),
+      ).rejects.toThrow(PayloadTooLargeException);
+
+      expect(mockVideoRepository.crearBorrador).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar si falta declarar sizeBytes', async () => {
+      const payloadSinSize = {
+        filename: 'tutorial.mp4',
+        mimeType: 'video/mp4',
+      };
+
+      await expect(
+        controller.initUpload(payloadSinSize, 'test-corr-id-123'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('debe aceptar formatos validos (.mp4) y crear el borrador', async () => {
-      const payloadValido = { filename: 'tutorial.mp4', mimeType: 'video/mp4' };
+      const payloadValido = {
+        filename: 'tutorial.mp4',
+        mimeType: 'video/mp4',
+        sizeBytes: 10_485_760,
+      };
 
       const result = await controller.initUpload(
         payloadValido,
@@ -110,8 +147,6 @@ describe('VideoUploadController', () => {
       );
 
       expect(result.status).toBe(201);
-      // uploadSessionId ahora es el id de negocio (randomUUID mockeado),
-      // no el uploadId crudo de Minio -- ver nota al inicio de la respuesta.
       expect(result.uploadSessionId).toBe('uuid-fixed-1234');
 
       expect(mockMinio.createMultipartUpload).toHaveBeenCalledWith(
@@ -122,6 +157,7 @@ describe('VideoUploadController', () => {
         filename: 'tutorial.mp4',
         object_key: 'uuid-fixed-1234/tutorial.mp4',
         minio_upload_id: 'minio-upload-id-777',
+        size_bytes: 10_485_760,
       });
     });
   });
@@ -154,7 +190,7 @@ describe('VideoUploadController', () => {
   });
 
   describe('POST /upload/:sessionId/complete (Ensamblaje)', () => {
-    it('debe ensamblar en MinIO, actualizar BD y publicar evento', async () => {
+    it('debe ensamblar en MinIO, calcular checksum, actualizar BD y publicar evento con envelope', async () => {
       const payloadFinal = {
         parts: [
           { PartNumber: 1, ETag: '"etag-1"' },
@@ -170,6 +206,7 @@ describe('VideoUploadController', () => {
 
       expect(result.status).toBe(200);
       expect(result.contentId).toBe('uuid-final-1234');
+      expect(result.checksumSha256).toBe('checksum-fake-abc123');
 
       expect(mockMinio.completeMultipartUpload).toHaveBeenCalledWith(
         'videos-upload',
@@ -180,8 +217,13 @@ describe('VideoUploadController', () => {
           { partNumber: 2, etag: '"etag-2"' },
         ],
       );
+      expect(mockMinio.calcularChecksumSha256).toHaveBeenCalledWith(
+        'videos-upload',
+        'sesion-abc-123/video.mp4',
+      );
       expect(mockVideoRepository.marcarComoSubido).toHaveBeenCalledWith(
         'sesion-abc-123',
+        'checksum-fake-abc123',
       );
 
       expect(mockBroker.publish).toHaveBeenCalledWith(
@@ -189,7 +231,9 @@ describe('VideoUploadController', () => {
         expect.objectContaining({
           contentId: 'uuid-final-1234',
           sessionId: 'sesion-abc-123',
+          checksumSha256: 'checksum-fake-abc123',
         }),
+        { correlationId: 'test-corr-id-777' },
       );
     });
   });

@@ -23,7 +23,11 @@ export class VideoStateService {
     @Inject('MESSAGE_BROKER') private readonly broker: MessageBrokerService,
   ) {}
 
-  async marcarComoListo(contentId: string, metadata: MetadataPayload) {
+  async marcarComoListo(
+    contentId: string,
+    metadata: MetadataPayload,
+    correlationId?: string,
+  ) {
     if (!metadata || !metadata.title || !metadata.visibility) {
       throw new BadRequestException(
         'Metadata incompleta para pasar a estado listo',
@@ -51,13 +55,17 @@ export class VideoStateService {
         .where(eq(videos.id, contentId));
     });
 
-    await this.broker.publish('metadata.updated', {
-      contentId,
-      version: 1,
-      title: metadata.title,
-      tags: metadata.tags || [],
-      visibility: metadata.visibility,
-    });
+    await this.broker.publish(
+      'metadata.updated',
+      {
+        contentId,
+        version: 1,
+        title: metadata.title,
+        tags: metadata.tags || [],
+        visibility: metadata.visibility,
+      },
+      { correlationId },
+    );
 
     return {
       contentId,

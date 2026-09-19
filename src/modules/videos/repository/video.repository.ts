@@ -8,6 +8,7 @@ export interface CrearBorradorInput {
   filename: string;
   object_key: string;
   minio_upload_id: string;
+  size_bytes: number;
 }
 
 @Injectable()
@@ -22,6 +23,7 @@ export class VideoRepository {
         filename: input.filename,
         object_key: input.object_key,
         minio_upload_id: input.minio_upload_id,
+        size_bytes: input.size_bytes,
         status: 'borrador',
       })
       .returning();
@@ -37,20 +39,15 @@ export class VideoRepository {
     return row ?? null;
   }
 
-  async marcarComoSubido(id: string) {
+  async marcarComoSubido(id: string, checksumSha256: string) {
     const [row] = await this.db
       .update(videos)
-      .set({ status: 'borrador' })
+      .set({ status: 'borrador', checksum_sha256: checksumSha256 })
       .where(eq(videos.id, id))
       .returning();
     return row ?? null;
   }
 
-  /**
-   * Update atómico condicionado al estado actual (UPDATE ... WHERE id = ? AND status = ?).
-   * Devuelve null si no matcheó (video no existe o no estaba en el estado esperado),
-   * sin necesidad de un SELECT previo separado.
-   */
   async actualizarEstadoSiCoincide(
     id: string,
     estadoEsperado: VideoStatusValue,

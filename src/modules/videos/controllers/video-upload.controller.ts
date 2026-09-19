@@ -4,6 +4,8 @@ import {
   Body,
   BadRequestException,
   NotFoundException,
+  UnsupportedMediaTypeException,
+  PayloadTooLargeException,
   HttpCode,
   Logger,
   Headers,
@@ -17,6 +19,10 @@ import { MinioService } from '../../../infrastructure/minio/minio.service.js';
 import { MessageBrokerService } from '../../../infrastructure/messaging/message-broker.service.js';
 import { VideoRepository } from '../repository/video.repository.js';
 import type { SessionValidator } from '../../../infrastructure/auth/session-validator.interface.js';
+
+const MAX_UPLOAD_SIZE_BYTES = Number(
+  process.env.MAX_UPLOAD_SIZE_BYTES ?? 2 * 1024 * 1024 * 1024, // 2GB por defecto
+);
 
 @Controller('api/content')
 export class VideoUploadController {
@@ -38,22 +44,30 @@ export class VideoUploadController {
     @Body() payload: any,
     @Headers('x-correlation-id') correlationId: string,
   ) {
-    // Delegado al API Gateway: no se inspecciona ningún token acá.
     await this.sessionValidator.validar();
 
-    this.logger.log(
-      `Iniciando subida [CorrelationID: ${correlationId || 'N/A'}]`,
-    );
+    const finalCorrelationId = correlationId || randomUUID();
+    this.logger.log(`Iniciando subida [CorrelationID: ${finalCorrelationId}]`);
 
     const formatosValidos = ['video/mp4', 'video/quicktime'];
 
     if (!payload.mimeType || !formatosValidos.includes(payload.mimeType)) {
-      throw new BadRequestException(
+      throw new UnsupportedMediaTypeException(
         'Formato invalido. Solo se permite mp4 y mov',
       );
     }
     if (!payload.filename) {
       throw new BadRequestException('Falta el nombre del archivo (filename)');
+    }
+    if (!Number.isFinite(payload.sizeBytes) || payload.sizeBytes <= 0) {
+      throw new BadRequestException(
+        'Falta declarar el tamaño del archivo (sizeBytes), en bytes',
+      );
+    }
+    if (payload.sizeBytes > MAX_UPLOAD_SIZE_BYTES) {
+      throw new PayloadTooLargeException(
+        `El archivo excede el tamaño máximo permitido (${MAX_UPLOAD_SIZE_BYTES} bytes)`,
+      );
     }
 
     const videoId = randomUUID();
@@ -66,6 +80,7 @@ export class VideoUploadController {
       filename: payload.filename,
       object_key: objectKey,
       minio_upload_id: minioUploadId,
+      size_bytes: payload.sizeBytes,
     });
 
     this.logger.log(
@@ -126,8 +141,9 @@ export class VideoUploadController {
     @Body() payload: { parts: { PartNumber: number; ETag: string }[] },
     @Headers('x-correlation-id') correlationId: string,
   ) {
+    const finalCorrelationId = correlationId || randomUUID();
     this.logger.log(
-      `Iniciando ensamblaje de chunks [SessionID: ${sessionId}] [CorrelationID: ${correlationId || 'N/A'}]`,
+      `Iniciando ensamblaje de chunks [SessionID: ${sessionId}] [CorrelationID: ${finalCorrelationId}]`,
     );
 
     const video = await this.videoRepository.buscarPorId(sessionId);
@@ -145,22 +161,36 @@ export class VideoUploadController {
       partesFormateadas,
     );
 
-    const videoActualizado =
-      await this.videoRepository.marcarComoSubido(sessionId);
+    const checksumSha256 = await this.minioService.calcularChecksumSha256(
+      this.bucketName,
+      video.object_key,
+    );
+
+    const videoActualizado = await this.videoRepository.marcarComoSubido(
+      sessionId,
+      checksumSha256,
+    );
     if (!videoActualizado) {
       throw new NotFoundException('Sesión de subida no encontrada');
     }
 
-    await this.broker.publish('video.uploaded', {
-      contentId: videoActualizado.id,
-      sessionId,
-      uploadedAt: new Date().toISOString(),
-    });
+    await this.broker.publish(
+      'video.uploaded',
+      {
+        contentId: videoActualizado.id,
+        sessionId,
+        sizeBytes: videoActualizado.size_bytes,
+        checksumSha256,
+        uploadedAt: new Date().toISOString(),
+      },
+      { correlationId: finalCorrelationId },
+    );
     this.logger.log(`Ensamblaje exitoso. [ContentID: ${videoActualizado.id}]`);
 
     return {
       status: 200,
       contentId: videoActualizado.id,
+      checksumSha256,
     };
   }
 }

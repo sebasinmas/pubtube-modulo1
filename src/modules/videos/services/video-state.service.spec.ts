@@ -2,11 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VideoStateService } from './video-state.service.js';
 import { BadRequestException } from '@nestjs/common';
 
-/**
- * Simula una transacción de Drizzle: expone un "tx" con la misma cadena
- * select().from().where().for('update').limit() y update().set().where()
- * que usa el servicio real dentro de db.transaction(async (tx) => {...}).
- */
 function createMockTx(videoEncontrado: any) {
   const updateChain = {
     set: vi.fn().mockReturnValue({
@@ -66,7 +61,6 @@ describe('VideoStateService.marcarComoProgramado', () => {
       service.marcarComoProgramado('abc', fechaPasada),
     ).rejects.toThrow(BadRequestException);
 
-    // La validación de fecha ocurre antes de abrir la transacción.
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
@@ -116,7 +110,7 @@ describe('VideoStateService - Transición Borrador a Listo', () => {
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 
-  it('Debe transicionar a "listo" y emitir evento si metadata es válida (Camino Feliz)', async () => {
+  it('Debe transicionar a "listo" y emitir evento con el contexto de correlación (Camino Feliz)', async () => {
     const videoId = '123e4567-e89b-12d3-a456-426614174000';
     const metadataValida = {
       title: 'Mi video',
@@ -124,19 +118,27 @@ describe('VideoStateService - Transición Borrador a Listo', () => {
       tags: ['educación'],
     };
 
-    const result = await service.marcarComoListo(videoId, metadataValida);
+    const result = await service.marcarComoListo(
+      videoId,
+      metadataValida,
+      'test-correlation-id',
+    );
 
     expect(result.status).toBe('listo');
     expect(mockDb.__tx.update).toHaveBeenCalled();
     const updateChain = mockDb.__tx.update();
     expect(updateChain.set).toHaveBeenCalledWith({ status: 'listo' });
 
-    expect(mockBroker.publish).toHaveBeenCalledWith('metadata.updated', {
-      contentId: videoId,
-      version: 1,
-      title: 'Mi video',
-      tags: ['educación'],
-      visibility: 'public',
-    });
+    expect(mockBroker.publish).toHaveBeenCalledWith(
+      'metadata.updated',
+      {
+        contentId: videoId,
+        version: 1,
+        title: 'Mi video',
+        tags: ['educación'],
+        visibility: 'public',
+      },
+      { correlationId: 'test-correlation-id' },
+    );
   });
 });
