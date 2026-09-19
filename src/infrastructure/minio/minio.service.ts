@@ -5,8 +5,11 @@ import {
   CompleteMultipartUploadCommand,
   ListPartsCommand,
   UploadPartCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createHash } from 'node:crypto';
+import type { Readable } from 'node:stream';
 
 @Injectable()
 export class MinioService {
@@ -96,5 +99,29 @@ export class MinioService {
     });
 
     return this.client.send(command);
+  }
+
+  /*
+    Calcula el SHA-256 del objeto ya ensamblado, releyéndolo desde MinIO.
+    El backend nunca ve los bytes durante la subida (van del cliente a MinIO
+    directo por URL prefirmada), así que esto solo puede hacerse DESPUÉS de
+    completar el multipart. 
+  */
+  async calcularChecksumSha256(
+    bucket: string,
+    object: string,
+  ): Promise<string> {
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: bucket, Key: object }),
+    );
+
+    const hash = createHash('sha256');
+    const stream = response.Body as Readable;
+
+    for await (const chunk of stream) {
+      hash.update(chunk as Buffer);
+    }
+
+    return hash.digest('hex');
   }
 }
