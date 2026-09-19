@@ -5,6 +5,7 @@ import {
   timestamp,
   jsonb,
   pgEnum,
+  bigint,
 } from 'drizzle-orm/pg-core';
 
 export const videoStatusEnum = pgEnum('video_status', [
@@ -25,4 +26,6 @@ export const videos = pgTable('videos', {
   filename: varchar('filename', { length: 255 }).notNull(),
   object_key: varchar('object_key', { length: 512 }).notNull(),
   minio_upload_id: varchar('minio_upload_id', { length: 255 }).notNull(),
+  size_bytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+  checksum_sha256: varchar('checksum_sha256', { length: 64 }),
 });
