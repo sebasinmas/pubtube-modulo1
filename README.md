@@ -1,6 +1,6 @@
 # Módulo 1: Gestión de Contenidos y Almacenamiento
 
-Este archivo sirve como **guía oficial** para levantar, configurar y probar el código correspondiente a este módulo. 
+Este archivo sirve como **guía oficial** para levantar, configurar y probar el código correspondiente a este módulo.
 
 Esta guía está redactada cuidadosamente para que sea comprensible tanto para personal técnico y desarrolladores, como para personas que recién se familiarizan con el sistema. Te recomendamos leer todas las instrucciones detalladamente antes de iniciar el proceso de despliegue.
 
@@ -15,7 +15,9 @@ Sus responsabilidades abarcan desde la ingesta de los archivos multimedia hasta 
 ## Funcionalidades Principales
 
 El sistema integra las siguientes capacidades operativas y técnicas:
+
 > **Nota:** Esto se actualizara a medida que avancen los Sprints del proyecto.
+
 ---
 
 ## Guía de Despliegue y Ejecución
@@ -24,12 +26,12 @@ El sistema integra las siguientes capacidades operativas y técnicas:
 
 Asegurate de tener instalado en tu máquina:
 
-| Herramienta | Versión mínima | Verificación |
-|---|---|---|
-| **Node.js** | `22.x` | `node --version` |
-| **pnpm** | `10.x` | `pnpm --version` |
-| **Docker + Docker Compose** | `24.x` | `docker compose version` |
-| **Git** | `2.x` | `git --version` |
+| Herramienta                 | Versión mínima | Verificación             |
+| --------------------------- | -------------- | ------------------------ |
+| **Node.js**                 | `22.x`         | `node --version`         |
+| **pnpm**                    | `10.x`         | `pnpm --version`         |
+| **Docker + Docker Compose** | `24.x`         | `docker compose version` |
+| **Git**                     | `2.x`          | `git --version`          |
 
 ### 2. Instalación y Configuración
 
@@ -90,30 +92,57 @@ pnpm run db:migrate
 
 ---
 
+### 4. Ejecución de Pruebas de Integración (E2E)
+
+Para ejecutar las pruebas de integración, es obligatorio que la infraestructura local (PostgreSQL y MinIO) esté operativa y correctamente inicializada, ya que estos tests interactúan con instancias reales y no utilizan mocks.
+
+Sigue estos pasos en orden estricto:
+**Paso 1: Levantar la infraestructura con espera activa
+
+```bash
+docker compose up -d --wait
+```
+
+> **importante:** El flag --wait es crítico. Asegura que los tests no comiencen hasta que la base de datos esté lista para recibir conexiones y el contenedor efímero minio-setup haya terminado de crear y configurar los buckets necesarios en MinIO.
+
+**Paso 2: Aplicar el esquema de la base de datos
+
+```bash
+pnpm drizzle-kit migrate
+```
+
+> **nota:** Si omites este paso tras una creación limpia de contenedores, las pruebas fallarán indicando que la relación/tabla no existe (ej. relation "videos" does not exist) porque el esquema aún no ha sido inyectado en la base de datos.
+
+**Paso 3: Ejecutar la suite de integración
+
+```bash
+pnpm test:integration
+```
+
 ## 🔬 Flujo de Trabajo para Desarrolladores (CI/DX)
 
 Este proyecto tiene un pipeline de calidad de código automatizado en **dos niveles**: local (antes del commit/push) y remoto (GitHub Actions en cada PR).
 
 ### Herramientas del Stack de Análisis Estático
 
-| Herramienta | Rol | Velocidad |
-|---|---|---|
-| **Prettier** | Formateo uniforme de código | ~1s |
-| **oxlint** | Linting estructural rápido (Rust) | ~100ms |
-| **madge** | Detección de ciclos entre módulos NestJS | ~1s |
-| **typescript-eslint** | Reglas semánticas que requieren el grafo de tipos | ~5s |
-| **tsc --noEmit** | Verificación completa del compilador TypeScript | ~10s |
-| **Vitest** | Suite de tests unitarios | ~2s |
+| Herramienta           | Rol                                               | Velocidad |
+| --------------------- | ------------------------------------------------- | --------- |
+| **Prettier**          | Formateo uniforme de código                       | ~1s       |
+| **oxlint**            | Linting estructural rápido (Rust)                 | ~100ms    |
+| **madge**             | Detección de ciclos entre módulos NestJS          | ~1s       |
+| **typescript-eslint** | Reglas semánticas que requieren el grafo de tipos | ~5s       |
+| **tsc --noEmit**      | Verificación completa del compilador TypeScript   | ~10s      |
+| **Vitest**            | Suite de tests unitarios                          | ~2s       |
 
 ### Git Hooks Automáticos (Lefthook)
 
 Los hooks se activan solos con `pnpm install`. No requieren configuración manual.
 
-| Hook | Cuándo se ejecuta | Qué valida |
-|---|---|---|
-| **pre-commit** | Antes de cada `git commit` | Prettier (solo archivos staged) + oxlint |
-| **commit-msg** | Al escribir el mensaje de commit | Formato de Conventional Commits |
-| **pre-push** | Antes de cada `git push` | `tsc --noEmit` + detección de ciclos |
+| Hook           | Cuándo se ejecuta                | Qué valida                               |
+| -------------- | -------------------------------- | ---------------------------------------- |
+| **pre-commit** | Antes de cada `git commit`       | Prettier (solo archivos staged) + oxlint |
+| **commit-msg** | Al escribir el mensaje de commit | Formato de Conventional Commits          |
+| **pre-push**   | Antes de cada `git push`         | `tsc --noEmit` + detección de ciclos     |
 
 **Formato de commits obligatorio (Conventional Commits):**
 
@@ -130,6 +159,7 @@ Ejemplos válidos:
 ```
 
 > Para hacer un commit sin pasar por los hooks en casos de emergencia:
+>
 > ```bash
 > git commit --no-verify -m "hotfix: ..."
 > ```
