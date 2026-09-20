@@ -97,7 +97,8 @@ pnpm run db:migrate
 Para ejecutar las pruebas de integración, es obligatorio que la infraestructura local (PostgreSQL y MinIO) esté operativa y correctamente inicializada, ya que estos tests interactúan con instancias reales y no utilizan mocks.
 
 Sigue estos pasos en orden estricto:
-**Paso 1: Levantar la infraestructura con espera activa
+
+**Paso 1: Levantar la infraestructura con espera activa**
 
 ```bash
 docker compose up -d --wait
@@ -105,7 +106,7 @@ docker compose up -d --wait
 
 > **importante:** El flag --wait es crítico. Asegura que los tests no comiencen hasta que la base de datos esté lista para recibir conexiones y el contenedor efímero minio-setup haya terminado de crear y configurar los buckets necesarios en MinIO.
 
-**Paso 2: Aplicar el esquema de la base de datos
+**Paso 2: Aplicar el esquema de la base de datos**
 
 ```bash
 pnpm drizzle-kit migrate
@@ -113,7 +114,7 @@ pnpm drizzle-kit migrate
 
 > **nota:** Si omites este paso tras una creación limpia de contenedores, las pruebas fallarán indicando que la relación/tabla no existe (ej. relation "videos" does not exist) porque el esquema aún no ha sido inyectado en la base de datos.
 
-**Paso 3: Ejecutar la suite de integración
+**Paso 3: Ejecutar la suite de integración**
 
 ```bash
 pnpm test:integration
