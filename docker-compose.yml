@@ -20,6 +20,8 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT}
       MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS}
+      AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+      AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
     depends_on:
       db:
         condition: service_healthy
@@ -60,6 +62,7 @@ services:
     image: dxflrs/garage:v2.4.1
     container_name: module1-garage
     restart: unless-stopped
+    entrypoint: ['/garage']
     command: ['server', '--single-node', '--default-bucket']
     ports:
       - '${MINIO_API_PORT:-9000}:3900'

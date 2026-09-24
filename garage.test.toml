@@ -6,7 +6,7 @@ replication_factor = 1
 
 rpc_bind_addr   = "[::]:3901"
 rpc_public_addr = "127.0.0.1:3901"
-rpc_secret      = "7a3c9e1f5d2b8a4c6e0f3b7d9a1c5e8f2b4d6a8c0e2f4b6d8a0c2e4f6b8d0a2"
+rpc_secret      = "7a3c9e1f5d2b8a4c6e0f3b7d9a1c5e8f2b4d6a8c0e2f4b6d8a0c2e4f6b8d0a20"
 
 [s3_api]
 s3_region    = "us-east-1"

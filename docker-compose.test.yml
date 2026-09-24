@@ -31,6 +31,7 @@ services:
     image: dxflrs/garage:v2.4.1
     container_name: module1-garage-test
     restart: 'no'
+    entrypoint: ['/garage']
     command: ['server', '--single-node', '--default-bucket']
     ports:
       - '${MINIO_API_PORT:-9100}:3900'
@@ -41,7 +42,7 @@ services:
       - /var/lib/garage:rw,nosuid,size=512m
     environment:
       GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
-      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadmin}
+      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadminsecret}
       GARAGE_DEFAULT_BUCKET: ${MINIO_BUCKET_CONTENT:-videos}
     networks:
       - module1-test-net
@@ -62,7 +63,7 @@ services:
       GARAGE_ADMIN_URL: http://garage-test:3903
       GARAGE_ADMIN_TOKEN: pubtube-garage-test-admin-token
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadminsecret}
       MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
       MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
     volumes:
