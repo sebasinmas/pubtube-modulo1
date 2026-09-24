@@ -24,22 +24,31 @@ services:
 
   # ─────────────────────────────────────────────
   # Almacenamiento de Objetos de Prueba – Garage (tmpfs)
+  # --single-node: configura layout mono-nodo automáticamente
+  # --default-bucket: crea key + bucket de contenido vía env vars
   # ─────────────────────────────────────────────
   garage-test:
     image: dxflrs/garage:v2.4.1
     container_name: module1-garage-test
     restart: 'no'
+    command: ['/garage', 'server', '--single-node', '--default-bucket']
     ports:
       - '${MINIO_API_PORT:-9100}:3900'
     volumes:
       - ./garage.test.toml:/etc/garage.toml:ro
     tmpfs:
-      - /var/lib/garage:rw,noexec,nosuid,size=512m
+      # noexec ausente a propósito: SQLite usa mmap que lo requiere
+      - /var/lib/garage:rw,nosuid,size=512m
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
+      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadmin}
+      GARAGE_DEFAULT_BUCKET: ${MINIO_BUCKET_CONTENT:-videos}
     networks:
       - module1-test-net
 
   # ─────────────────────────────────────────────
-  # Aprovisionamiento de Buckets en Garage de Prueba
+  # Aprovisionamiento del bucket de miniaturas
+  # El bucket de contenido ya lo crea --default-bucket arriba.
   # Usa Alpine (tiene shell) — la imagen dxflrs/garage es distroless (scratch)
   # ─────────────────────────────────────────────
   garage-setup-test:

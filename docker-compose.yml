@@ -53,13 +53,20 @@ services:
 
   # ─────────────────────────────────────────────
   # Almacenamiento de Objetos – Garage (S3-compatible)
+  # --single-node: configura layout mono-nodo automáticamente
+  # --default-bucket: crea key + bucket de contenido vía env vars
   # ─────────────────────────────────────────────
   garage:
     image: dxflrs/garage:v2.4.1
     container_name: module1-garage
     restart: unless-stopped
+    command: ['/garage', 'server', '--single-node', '--default-bucket']
     ports:
       - '${MINIO_API_PORT:-9000}:3900'
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY}
+      GARAGE_DEFAULT_BUCKET: ${MINIO_BUCKET_CONTENT:-videos}
     volumes:
       - ./garage.toml:/etc/garage.toml:ro
       - garage_data:/var/lib/garage
