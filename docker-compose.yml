@@ -60,7 +60,7 @@ services:
     image: dxflrs/garage:v2.4.1
     container_name: module1-garage
     restart: unless-stopped
-    command: ['/garage', 'server', '--single-node', '--default-bucket']
+    command: ['server', '--single-node', '--default-bucket']
     ports:
       - '${MINIO_API_PORT:-9000}:3900'
     environment:

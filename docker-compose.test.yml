@@ -31,7 +31,7 @@ services:
     image: dxflrs/garage:v2.4.1
     container_name: module1-garage-test
     restart: 'no'
-    command: ['/garage', 'server', '--single-node', '--default-bucket']
+    command: ['server', '--single-node', '--default-bucket']
     ports:
       - '${MINIO_API_PORT:-9100}:3900'
     volumes:
