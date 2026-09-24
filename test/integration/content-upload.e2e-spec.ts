@@ -58,7 +58,7 @@ describe('POST /api/content — flujo real de subida (US-A1)', () => {
   }, 30_000);
 
   afterAll(async () => {
-    await app.close();
+    await app?.close();
   });
 
   it('sube un archivo de 1MB, lo persiste en "borrador" y publica video.uploaded con el envelope completo', async () => {

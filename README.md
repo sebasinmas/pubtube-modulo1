@@ -48,77 +48,91 @@ pnpm install
 **Configurar variables de entorno:**
 
 ```bash
-# Copiar el archivo de ejemplo
+# Copiar el archivo de ejemplo (listo para usar inmediatamente, plug & play)
 cp .env.example .env
 ```
 
-Editar `.env` con los valores correspondientes al entorno local. Las variables requeridas son:
+El archivo `.env.example` contiene valores predeterminados listos para desarrollo local:
 
 ```dotenv
-# PostgreSQL
+# Configuración API
+API_PORT=8000
+
+# PostgreSQL (puerto 5433 en host mapeado al 5432 del contenedor)
 POSTGRES_USER=pubtube
 POSTGRES_PASSWORD=pubtube_secret
 POSTGRES_DB=pubtube_db
+POSTGRES_PORT=5433
+
+# URL de conexión directa desde el host (migraciones y CLI)
+DATABASE_URL=postgresql://pubtube:pubtube_secret@localhost:5433/pubtube_db
 
 # MinIO (Object Storage compatible S3)
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
-MINIO_BUCKET_CONTENT=content
+MINIO_ENDPOINT=localhost
+MINIO_PORT=9000
+MINIO_API_PORT=9000
+MINIO_CONSOLE_PORT=9001
+MINIO_ACCESS_KEY=adminminio
+MINIO_SECRET_KEY=minio_secret123
+MINIO_BUCKET_CONTENT=videos
 MINIO_BUCKET_THUMBNAILS=thumbnails
-
-# API
-API_PORT=8000
 ```
+
+> **Nota sobre puertos:** El contenedor de PostgreSQL expone el puerto `5433` en tu máquina host (`5433:5432`) para evitar colisiones si ya tienes un PostgreSQL local corriendo en el puerto padrão `5432`. Dentro de la red interna de Docker, la API se conecta directamente a `db:5432`.
 
 ### 3. Ejecución del Proyecto
 
-**Levantar toda la infraestructura local (API + DB + MinIO):**
+El repositorio cuenta con tres archivos Docker Compose según el propósito:
+- `docker-compose.yml`: Entorno de desarrollo local (API + Postgres + MinIO).
+- `docker-compose.test.yml`: Infraestructura efímera para pruebas de integración (en `tmpfs` y puertos aislados `5434` / `9100`).
+- `docker-compose.prod.yml`: Configuración endurecida para producción.
+
+**Opción A: Levantar todo en Docker (API + DB + MinIO):**
 
 ```bash
+# 1. Iniciar contenedores
 docker compose up -d
-```
 
-**Solo el servidor en modo desarrollo (hot-reload):**
-
-```bash
-pnpm run start:dev
-```
-
-**Correr migraciones de base de datos:**
-
-```bash
+# 2. Aplicar migraciones
 pnpm run db:migrate
+```
+
+**Opción B: Servidor local con hot-reload (desarrollo ágil):**
+
+```bash
+# 1. Iniciar solo la infraestructura necesaria
+docker compose up db minio minio-setup -d
+
+# 2. Aplicar migraciones
+pnpm run db:migrate
+
+# 3. Iniciar el servidor NestJS con recarga en vivo
+pnpm run start:dev
 ```
 
 ---
 
 ### 4. Ejecución de Pruebas de Integración (E2E)
 
-Para ejecutar las pruebas de integración, es obligatorio que la infraestructura local (PostgreSQL y MinIO) esté operativa y correctamente inicializada, ya que estos tests interactúan con instancias reales y no utilizan mocks.
-
-Sigue estos pasos en orden estricto:
-
-**Paso 1: Levantar la infraestructura con espera activa**
-
-```bash
-docker compose up -d --wait
-```
-
-> **importante:** El flag --wait es crítico. Asegura que los tests no comiencen hasta que la base de datos esté lista para recibir conexiones y el contenedor efímero minio-setup haya terminado de crear y configurar los buckets necesarios en MinIO.
-
-**Paso 2: Aplicar el esquema de la base de datos**
-
-```bash
-pnpm drizzle-kit migrate
-```
-
-> **nota:** Si omites este paso tras una creación limpia de contenedores, las pruebas fallarán indicando que la relación/tabla no existe (ej. relation "videos" does not exist) porque el esquema aún no ha sido inyectado en la base de datos.
-
-**Paso 3: Ejecutar la suite de integración**
+Las pruebas de integración interactúan con instancias reales de PostgreSQL y MinIO (sin mocks). Para ofrecer la máxima simplicidad (*plug & play*), el flujo completo está **automatizado en un único comando**:
 
 ```bash
 pnpm test:integration
 ```
+
+Este comando ejecuta de forma transparente:
+1. **Aislamiento**: Levanta la infraestructura de test (`docker-compose.test.yml`) usando variables de `.env.test`. Utiliza puertos dedicados (**Postgres: 5434, MinIO: 9100/9101**) y almacenamiento en memoria (`tmpfs`), por lo que **no entra en conflicto** si tienes el entorno de desarrollo corriendo y no desgasta el disco.
+2. **Espera activa**: Espera hasta que la base de datos y los buckets de MinIO estén 100% listos (`--wait`).
+3. **Migraciones automáticas**: Aplica el esquema de base de datos vía Drizzle sobre la base de pruebas.
+4. **Ejecución de pruebas**: Corre la suite completa de integración en Vitest en el host (rápido y con soporte de depuración).
+5. **Teardown y limpieza automática**: Al finalizar (sea exitoso, con error o interrumpido con `Ctrl+C`), apaga y destruye los contenedores y recursos temporales automáticamente (`down -v`), liberando puertos y memoria.
+
+> **Ejecución manual (opcional):** Si prefieres mantener los contenedores de test levantados para iterar muy rápido sobre una prueba específica:
+> ```bash
+> docker compose -f docker-compose.test.yml --env-file .env.test up -d --wait
+> pnpm run db:migrate
+> pnpm test:integration:manual
+> ```
 
 ## 🔬 Flujo de Trabajo para Desarrolladores (CI/DX)
 
@@ -191,36 +205,51 @@ pnpm run validate
 
 ### Pipeline de CI (GitHub Actions)
 
-El pipeline se ejecuta automáticamente en cada **push a `main`/`develop`** y en cada **Pull Request**. Está compuesto por 4 jobs que corren en paralelo tras la instalación de dependencias:
+El pipeline está diseñado bajo un principio de **alta eficiencia y mínimo cómputo** en GitHub Actions:
+- **`develop` y PRs iterativos**: Ejecuta un único runner unificado de calidad y compilación (~30-40s), evitando levantar múltiples VMs redundantes.
+- **`main` (Gate de Producción)**: Exige adicionalmente la ejecución de la suite completa de pruebas de integración (`pnpm run test:integration` con Docker en memoria) antes de permitir cualquier merge.
 
 ```
 Push / PR
     │
     ▼
-┌─────────────────────┐
-│   setup (pnpm)      │  📦 ~15s
-└──────────┬──────────┘
-           │  (3 jobs en paralelo)
-    ┌──────┼──────────────────┐
-    ▼      ▼                  ▼
-┌───────┐ ┌──────────┐ ┌──────────┐
-│static │ │typecheck │ │  tests   │
-│analysis│ │(tsc)    │ │(vitest)  │
-│~30-60s│ │~10-20s  │ │~15-30s  │
-└───┬───┘ └────┬─────┘ └────┬─────┘
-    └──────────┴─────────────┘
-                   │
-                   ▼
-           ┌───────────────┐
-           │   ci-gate     │  ✅ / ❌
-           └───────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  📦 Quality & Build (1 solo runner ~35s)                     │
+│  ├─ Prettier (formato)                                      │
+│  ├─ oxlint (linting estructural fail-fast)                  │
+│  ├─ madge (detección de ciclos)                             │
+│  ├─ tsc (typecheck estricto)                                │
+│  ├─ ESLint (reglas semánticas)                              │
+│  ├─ Vitest (tests unitarios)                                │
+│  └─ NestJS Build (verificación de compilación de prod)      │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+            ¿Es PR hacia main o push a main?
+                               │
+                    ┌──────────┴──────────┐
+                   SÍ                     NO
+                    │                     │
+                    ▼                     ▼
+┌──────────────────────────────────────┐  ✅ Fin del CI
+│ 🧪 Integration Tests (~40s)          │  (Ahorro de cómputo en develop)
+│ ├─ Docker Compose (tmpfs Postgres+S3)│
+│ ├─ Drizzle Migrations                │
+│ └─ Vitest E2E Suite                  │
+└──────────────────────────────────────┘
+                    │
+                    ▼
+     ✅ Requisito obligatorio para main
 ```
 
 **Configurar Branch Protection en GitHub:**
 
-En `Settings > Branches > Branch protection rules`, agregar la regla sobre `main` y `develop` con el check requerido: `✅ CI Gate`.
-
-> Con esto, ningún Pull Request puede mergearse si el CI no pasa completamente.
+- **Para la rama `main`:**
+  En `Settings > Branches > Branch protection rules`, exigir los checks:
+  1. `📦 Quality & Build`
+  2. `🧪 Integration Tests (Required for main)`
+  *(Ningún Pull Request puede mergearse a `main` sin pasar ambos checks).*
+- **Para la rama `develop`:**
+  Exigir el check: `📦 Quality & Build`.
 
 ---
 

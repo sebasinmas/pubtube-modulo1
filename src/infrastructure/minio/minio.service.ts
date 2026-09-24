@@ -18,7 +18,8 @@ export class MinioService {
 
   constructor() {
     const protocol = process.env.MINIO_USE_SSL === 'true' ? 'https' : 'http';
-    const endpoint = `${protocol}://${process.env.MINIO_ENDPOINT || 'localhost'}:${process.env.MINIO_PORT || '9000'}`;
+    const port = process.env.MINIO_PORT || process.env.MINIO_API_PORT || '9000';
+    const endpoint = `${protocol}://${process.env.MINIO_ENDPOINT || 'localhost'}:${port}`;
 
     this.client = new S3Client({
       endpoint,

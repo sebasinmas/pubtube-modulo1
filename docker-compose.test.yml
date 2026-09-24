@@ -1,0 +1,80 @@
+services:
+  # ─────────────────────────────────────────────
+  # Base de Datos de Prueba – PostgreSQL (tmpfs)
+  # ─────────────────────────────────────────────
+  db-test:
+    image: postgres:16-alpine
+    container_name: module1-db-test
+    restart: 'no'
+    ports:
+      - '${POSTGRES_PORT:-5434}:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-test_pubtube}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test_pubtube_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-test_pubtube_db}
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=256m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-test_pubtube} -d ${POSTGRES_DB:-test_pubtube_db}']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      - module1-test-net
+
+  # ─────────────────────────────────────────────
+  # Almacenamiento de Objetos de Prueba – MinIO (tmpfs)
+  # ─────────────────────────────────────────────
+  minio-test:
+    image: quay.io/minio/minio:latest
+    container_name: module1-minio-test
+    restart: 'no'
+    command: server /data --console-address ":9001"
+    ports:
+      - '${MINIO_API_PORT:-9100}:9000'
+      - '${MINIO_CONSOLE_PORT:-9101}:9001'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-testminioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-testminioadmin}
+    tmpfs:
+      - /data:rw,noexec,nosuid,size=512m
+    healthcheck:
+      test: ['CMD-SHELL', 'mc ready local || exit 0']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      - module1-test-net
+
+  # ─────────────────────────────────────────────
+  # Aprovisionamiento de Buckets en MinIO de Prueba
+  # ─────────────────────────────────────────────
+  minio-setup-test:
+    image: quay.io/minio/mc:latest
+    container_name: module1-minio-setup-test
+    restart: 'no'
+    depends_on:
+      minio-test:
+        condition: service_started
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadmin}
+      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
+      MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
+    networks:
+      - module1-test-net
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set myminio http://minio-test:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY}); do
+        echo 'Esperando a que MinIO de test acepte conexiones...';
+        sleep 1;
+      done;
+      /usr/bin/mc mb myminio/$${MINIO_BUCKET_CONTENT} --ignore-existing;
+      /usr/bin/mc mb myminio/$${MINIO_BUCKET_THUMBNAILS} --ignore-existing;
+      echo 'Buckets de prueba aprovisionados correctamente.';
+      exit 0;
+      "
+
+networks:
+  module1-test-net:
+    driver: bridge

@@ -10,12 +10,15 @@ const logger = new Logger('DatabaseModule');
     {
       provide: 'DATABASE_CONNECTION',
       useFactory: () => {
-        const connectionString = process.env.DATABASE_URL;
-        if (!connectionString) {
-          throw new Error(
-            'DATABASE_URL no está definida. Revisa el archivo .env o las variables de entorno del docker-compose.',
-          );
-        }
+        const user = process.env.POSTGRES_USER || 'pubtube';
+        const password = process.env.POSTGRES_PASSWORD || 'pubtube_secret';
+        const host = process.env.POSTGRES_HOST || 'localhost';
+        const port = process.env.POSTGRES_PORT || '5433';
+        const dbName = process.env.POSTGRES_DB || 'pubtube_db';
+
+        const connectionString =
+          process.env.DATABASE_URL ||
+          `postgresql://${user}:${password}@${host}:${port}/${dbName}`;
 
         const pool = new Pool({ connectionString });
         pool.on('error', (err) => {

@@ -1,81 +1,86 @@
 services:
   # ─────────────────────────────────────────────
-  # API – Módulo 1: Gestión de Contenidos
+  # API – Módulo 1: Gestión de Contenidos (Producción)
   # ─────────────────────────────────────────────
   module1-content:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: module1-content
-    restart: unless-stopped
+      target: production
+    container_name: module1-content-prod
+    restart: always
     ports:
       - '${API_PORT:-8000}:8000'
     environment:
+      NODE_ENV: production
       PORT: '8000'
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       MINIO_ENDPOINT: minio
       MINIO_PORT: '9000'
-      MINIO_USE_SSL: 'false'
+      MINIO_USE_SSL: '${MINIO_USE_SSL:-false}'
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT}
-      MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS}
+      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
+      MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
     depends_on:
       db:
         condition: service_healthy
       minio-setup:
         condition: service_completed_successfully
     networks:
-      - module1-net
+      - module1-prod-net
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
 
   # ─────────────────────────────────────────────
-  # Base de Datos – PostgreSQL
+  # Base de Datos – PostgreSQL (Producción)
   # ─────────────────────────────────────────────
   db:
     image: postgres:16-alpine
-    container_name: module1-db
-    restart: unless-stopped
-    ports:
-      - '${POSTGRES_PORT:-5433}:5432'
+    container_name: module1-db-prod
+    restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data_prod:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - module1-net
+      - module1-prod-net
 
   # ─────────────────────────────────────────────
-  # Almacenamiento de Objetos – MinIO
+  # Almacenamiento de Objetos – MinIO (Producción)
   # ─────────────────────────────────────────────
   minio:
     image: quay.io/minio/minio:latest
-    container_name: module1-minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
+    container_name: module1-minio-prod
+    restart: always
+    command: server /data
     ports:
       - '${MINIO_API_PORT:-9000}:9000'
-      - '${MINIO_CONSOLE_PORT:-9001}:9001'
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     volumes:
-      - minio_data:/data
+      - minio_data_prod:/data
     networks:
-      - module1-net
+      - module1-prod-net
 
   # ─────────────────────────────────────────────
-  # Aprovisionamiento de MinIO (Práctica DevOps)
+  # Aprovisionamiento de Buckets en Producción
   # ─────────────────────────────────────────────
   minio-setup:
     image: quay.io/minio/mc:latest
-    container_name: module1-minio-setup
+    container_name: module1-minio-setup-prod
+    restart: 'no'
     depends_on:
       minio:
         condition: service_started
@@ -83,8 +88,9 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
+      MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
     networks:
-      - module1-net
+      - module1-prod-net
     entrypoint: >
       /bin/sh -c "
       until (/usr/bin/mc alias set myminio http://minio:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY}); do
@@ -92,16 +98,17 @@ services:
         sleep 2;
       done;
       /usr/bin/mc mb myminio/$${MINIO_BUCKET_CONTENT} --ignore-existing;
-      echo 'Bucket aprovisionado correctamente.';
+      /usr/bin/mc mb myminio/$${MINIO_BUCKET_THUMBNAILS} --ignore-existing;
+      echo 'Buckets de producción aprovisionados correctamente.';
       exit 0;
       "
 
 volumes:
-  pg_data:
+  pg_data_prod:
     driver: local
-  minio_data:
+  minio_data_prod:
     driver: local
 
 networks:
-  module1-net:
+  module1-prod-net:
     driver: bridge
