@@ -68,38 +68,27 @@ services:
 
   # ─────────────────────────────────────────────
   # Aprovisionamiento de Garage (Práctica DevOps)
+  # Usa Alpine (tiene shell) — la imagen dxflrs/garage es distroless (scratch)
   # ─────────────────────────────────────────────
   garage-setup:
-    image: dxflrs/garage:v2.4.1
+    image: alpine:3.21
     container_name: module1-garage-setup
     restart: 'no'
     depends_on:
       garage:
         condition: service_started
     environment:
+      GARAGE_ADMIN_URL: http://garage:3903
+      GARAGE_ADMIN_TOKEN: pubtube-garage-admin-token
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
       MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
+    volumes:
+      - ./scripts/garage-setup.sh:/garage-setup.sh:ro
     networks:
       - module1-net
-    entrypoint: >
-      /bin/sh -c "
-      echo 'Esperando a que Garage acepte conexiones...';
-      until /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token status 2>/dev/null; do
-        sleep 2;
-      done;
-      NODE_ID=$$(/garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token status | grep 'ALIVE' | awk '{print $$1}');
-      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token layout assign -z dc1 -c 10G $$NODE_ID 2>/dev/null || true;
-      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token layout apply --version 1 2>/dev/null || true;
-      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token key import -n pubtube-key --key-id $${MINIO_ACCESS_KEY} --secret-key $${MINIO_SECRET_KEY} 2>/dev/null || true;
-      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token bucket create $${MINIO_BUCKET_CONTENT} 2>/dev/null || true;
-      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token bucket create $${MINIO_BUCKET_THUMBNAILS} 2>/dev/null || true;
-      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token bucket allow $${MINIO_BUCKET_CONTENT} --key pubtube-key --read --write 2>/dev/null || true;
-      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token bucket allow $${MINIO_BUCKET_THUMBNAILS} --key pubtube-key --read --write 2>/dev/null || true;
-      echo 'Buckets aprovisionados correctamente.';
-      exit 0;
-      "
+    entrypoint: ['/bin/sh', '/garage-setup.sh']
 
 volumes:
   pg_data:
