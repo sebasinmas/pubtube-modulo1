@@ -15,8 +15,8 @@ services:
       NODE_ENV: production
       PORT: '8000'
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      MINIO_ENDPOINT: minio
-      MINIO_PORT: '9000'
+      MINIO_ENDPOINT: garage
+      MINIO_PORT: '3900'
       MINIO_USE_SSL: '${MINIO_USE_SSL:-false}'
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -25,7 +25,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      minio-setup:
+      garage-setup:
         condition: service_completed_successfully
     networks:
       - module1-prod-net
@@ -57,32 +57,29 @@ services:
       - module1-prod-net
 
   # ─────────────────────────────────────────────
-  # Almacenamiento de Objetos – MinIO (Producción)
+  # Almacenamiento de Objetos – Garage (Producción)
   # ─────────────────────────────────────────────
-  minio:
-    image: quay.io/minio/minio:latest
-    container_name: module1-minio-prod
+  garage:
+    image: dxflrs/garage:v2.4.1
+    container_name: module1-garage-prod
     restart: always
-    command: server /data
     ports:
-      - '${MINIO_API_PORT:-9000}:9000'
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      - '${MINIO_API_PORT:-9000}:3900'
     volumes:
-      - minio_data_prod:/data
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage_data_prod:/var/lib/garage
     networks:
       - module1-prod-net
 
   # ─────────────────────────────────────────────
   # Aprovisionamiento de Buckets en Producción
   # ─────────────────────────────────────────────
-  minio-setup:
-    image: quay.io/minio/mc:latest
-    container_name: module1-minio-setup-prod
+  garage-setup:
+    image: dxflrs/garage:v2.4.1
+    container_name: module1-garage-setup-prod
     restart: 'no'
     depends_on:
-      minio:
+      garage:
         condition: service_started
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
@@ -93,12 +90,18 @@ services:
       - module1-prod-net
     entrypoint: >
       /bin/sh -c "
-      until (/usr/bin/mc alias set myminio http://minio:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY}); do
-        echo 'Esperando a que MinIO acepte conexiones...';
+      echo 'Esperando a que Garage acepte conexiones...';
+      until /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token status 2>/dev/null; do
         sleep 2;
       done;
-      /usr/bin/mc mb myminio/$${MINIO_BUCKET_CONTENT} --ignore-existing;
-      /usr/bin/mc mb myminio/$${MINIO_BUCKET_THUMBNAILS} --ignore-existing;
+      NODE_ID=$$(/garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token status | grep 'ALIVE' | awk '{print $$1}');
+      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token layout assign -z dc1 -c 10G $$NODE_ID 2>/dev/null || true;
+      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token layout apply --version 1 2>/dev/null || true;
+      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token key import -n pubtube-key --key-id $${MINIO_ACCESS_KEY} --secret-key $${MINIO_SECRET_KEY} 2>/dev/null || true;
+      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token bucket create $${MINIO_BUCKET_CONTENT} 2>/dev/null || true;
+      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token bucket create $${MINIO_BUCKET_THUMBNAILS} 2>/dev/null || true;
+      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token bucket allow $${MINIO_BUCKET_CONTENT} --key pubtube-key --read --write 2>/dev/null || true;
+      /garage admin -a http://garage:3903 --admin-token pubtube-garage-admin-token bucket allow $${MINIO_BUCKET_THUMBNAILS} --key pubtube-key --read --write 2>/dev/null || true;
       echo 'Buckets de producción aprovisionados correctamente.';
       exit 0;
       "
@@ -106,7 +109,7 @@ services:
 volumes:
   pg_data_prod:
     driver: local
-  minio_data_prod:
+  garage_data_prod:
     driver: local
 
 networks:

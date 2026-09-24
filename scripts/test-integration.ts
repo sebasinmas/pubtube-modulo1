@@ -34,7 +34,7 @@ async function run(): Promise<void> {
 
   try {
     console.log(
-      '🚀 1/3: Levantando infraestructura de test (Postgres tmpfs + MinIO tmpfs)...',
+      '🚀 1/3: Levantando infraestructura de test (Postgres tmpfs + Garage tmpfs)...',
     );
     execSync(`${COMPOSE_CMD} up -d --wait`, { stdio: 'inherit' });
 

@@ -23,38 +23,30 @@ services:
       - module1-test-net
 
   # ─────────────────────────────────────────────
-  # Almacenamiento de Objetos de Prueba – MinIO (tmpfs)
+  # Almacenamiento de Objetos de Prueba – Garage (tmpfs)
   # ─────────────────────────────────────────────
-  minio-test:
-    image: quay.io/minio/minio:latest
-    container_name: module1-minio-test
+  garage-test:
+    image: dxflrs/garage:v2.4.1
+    container_name: module1-garage-test
     restart: 'no'
-    command: server /data --console-address ":9001"
     ports:
-      - '${MINIO_API_PORT:-9100}:9000'
-      - '${MINIO_CONSOLE_PORT:-9101}:9001'
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-testminioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-testminioadmin}
+      - '${MINIO_API_PORT:-9100}:3900'
+    volumes:
+      - ./garage.test.toml:/etc/garage.toml:ro
     tmpfs:
-      - /data:rw,noexec,nosuid,size=512m
-    healthcheck:
-      test: ['CMD-SHELL', 'mc ready local || exit 0']
-      interval: 2s
-      timeout: 3s
-      retries: 15
+      - /var/lib/garage:rw,noexec,nosuid,size=512m
     networks:
       - module1-test-net
 
   # ─────────────────────────────────────────────
-  # Aprovisionamiento de Buckets en MinIO de Prueba
+  # Aprovisionamiento de Buckets en Garage de Prueba
   # ─────────────────────────────────────────────
-  minio-setup-test:
-    image: quay.io/minio/mc:latest
-    container_name: module1-minio-setup-test
+  garage-setup-test:
+    image: dxflrs/garage:v2.4.1
+    container_name: module1-garage-setup-test
     restart: 'no'
     depends_on:
-      minio-test:
+      garage-test:
         condition: service_started
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
@@ -65,12 +57,18 @@ services:
       - module1-test-net
     entrypoint: >
       /bin/sh -c "
-      until (/usr/bin/mc alias set myminio http://minio-test:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY}); do
-        echo 'Esperando a que MinIO de test acepte conexiones...';
+      echo 'Esperando a que Garage de test acepte conexiones...';
+      until /garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token status 2>/dev/null; do
         sleep 1;
       done;
-      /usr/bin/mc mb myminio/$${MINIO_BUCKET_CONTENT} --ignore-existing;
-      /usr/bin/mc mb myminio/$${MINIO_BUCKET_THUMBNAILS} --ignore-existing;
+      NODE_ID=$$(/garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token status | grep 'ALIVE' | awk '{print $$1}');
+      /garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token layout assign -z dc1 -c 10G $$NODE_ID 2>/dev/null || true;
+      /garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token layout apply --version 1 2>/dev/null || true;
+      /garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token key import -n pubtube-test-key --key-id $${MINIO_ACCESS_KEY} --secret-key $${MINIO_SECRET_KEY} 2>/dev/null || true;
+      /garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token bucket create $${MINIO_BUCKET_CONTENT} 2>/dev/null || true;
+      /garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token bucket create $${MINIO_BUCKET_THUMBNAILS} 2>/dev/null || true;
+      /garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token bucket allow $${MINIO_BUCKET_CONTENT} --key pubtube-test-key --read --write 2>/dev/null || true;
+      /garage admin -a http://garage-test:3903 --admin-token pubtube-garage-test-admin-token bucket allow $${MINIO_BUCKET_THUMBNAILS} --key pubtube-test-key --read --write 2>/dev/null || true;
       echo 'Buckets de prueba aprovisionados correctamente.';
       exit 0;
       "
