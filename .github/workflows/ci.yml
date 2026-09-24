@@ -1,0 +1,101 @@
+name: CI — PubTube Módulo 1
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+# Cancela ejecuciones anteriores del mismo branch/PR para ahorrar minutos de cómputo en GitHub
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '26'
+  PNPM_VERSION: '11'
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 1: Calidad de Código y Build (Unificado para mínimo cómputo)
+  # Corre en 1 solo runner para develop, main y PRs (~30-40s).
+  # Evita inicializar múltiples VMs redundantes y reutiliza la misma instalación.
+  # ──────────────────────────────────────────────────────────────────────────
+  quality-and-build:
+    name: 📦 Quality & Build
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout código fuente
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Configurar Node.js con caché de pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Instalar dependencias (frozen-lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: 🎨 Prettier — Verificar formato
+        run: pnpm run format:check
+
+      - name: ⚡ oxlint — Linting estructural (Rust fail-fast)
+        run: pnpm run lint
+
+      - name: 🔄 madge — Detectar ciclos entre módulos
+        run: pnpm run check:cycles
+
+      - name: 🔷 tsc --noEmit — Verificación de tipos TypeScript
+        run: pnpm run typecheck
+
+      - name: 🔬 ESLint — Reglas semánticas con type information
+        run: pnpm run lint:types
+
+      - name: 🧪 Vitest — Tests unitarios
+        run: pnpm run test
+
+      - name: 🏗️ NestJS — Verificar compilación de producción (build)
+        run: pnpm run build
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 2: Tests de Integración (Docker Compose tmpfs + Drizzle + Vitest E2E)
+  # Solo se ejecuta antes de mergear/aceptar hacia main (PRs o push a main).
+  # En ramas de desarrollo (develop) no se ejecuta para evitar sobrecosto de cómputo.
+  # Requiere que quality-and-build haya pasado previamente (fail-fast).
+  # ──────────────────────────────────────────────────────────────────────────
+  integration-tests:
+    name: 🧪 Integration Tests (Required for main)
+    runs-on: ubuntu-24.04
+    needs: quality-and-build
+    if: github.base_ref == 'main' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout código fuente
+        uses: actions/checkout@v4
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Configurar Node.js con caché de pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Instalar dependencias (frozen-lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: 🧪 Ejecutar suite de integración (PostgreSQL + MinIO en memoria + E2E)
+        run: pnpm run test:integration
+

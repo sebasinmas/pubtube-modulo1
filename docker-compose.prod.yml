@@ -1,0 +1,116 @@
+services:
+  # ─────────────────────────────────────────────
+  # API – Módulo 1: Gestión de Contenidos (Producción)
+  # ─────────────────────────────────────────────
+  module1-content:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: module1-content-prod
+    restart: always
+    ports:
+      - '${API_PORT:-8000}:8000'
+    environment:
+      NODE_ENV: production
+      PORT: '8000'
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MINIO_ENDPOINT: garage
+      MINIO_PORT: '3900'
+      MINIO_USE_SSL: '${MINIO_USE_SSL:-false}'
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
+      MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
+      AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+      AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+    depends_on:
+      db:
+        condition: service_healthy
+      garage-setup:
+        condition: service_completed_successfully
+    networks:
+      - module1-prod-net
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  # ─────────────────────────────────────────────
+  # Base de Datos – PostgreSQL (Producción)
+  # ─────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: module1-db-prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - module1-prod-net
+
+  # ─────────────────────────────────────────────
+  # Almacenamiento de Objetos – Garage (Producción)
+  # --single-node: configura layout mono-nodo automáticamente
+  # --default-bucket: crea key + bucket de contenido vía env vars
+  # ─────────────────────────────────────────────
+  garage:
+    image: dxflrs/garage:v2.4.1
+    container_name: module1-garage-prod
+    restart: always
+    entrypoint: ['/garage']
+    command: ['server', '--single-node', '--default-bucket']
+    ports:
+      - '${MINIO_API_PORT:-9000}:3900'
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY}
+      GARAGE_DEFAULT_BUCKET: ${MINIO_BUCKET_CONTENT:-videos}
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage_data_prod:/var/lib/garage
+    networks:
+      - module1-prod-net
+
+  # ─────────────────────────────────────────────
+  # Aprovisionamiento de Buckets en Producción
+  # Usa Alpine (tiene shell) — la imagen dxflrs/garage es distroless (scratch)
+  # ─────────────────────────────────────────────
+  garage-setup:
+    image: alpine:3.21
+    container_name: module1-garage-setup-prod
+    restart: 'no'
+    depends_on:
+      garage:
+        condition: service_started
+    environment:
+      GARAGE_ADMIN_URL: http://garage:3903
+      GARAGE_ADMIN_TOKEN: pubtube-garage-admin-token
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
+      MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
+    volumes:
+      - ./scripts/garage-setup.sh:/garage-setup.sh:ro
+    networks:
+      - module1-prod-net
+    entrypoint: ['/bin/sh', '/garage-setup.sh']
+
+volumes:
+  pg_data_prod:
+    driver: local
+  garage_data_prod:
+    driver: local
+
+networks:
+  module1-prod-net:
+    driver: bridge

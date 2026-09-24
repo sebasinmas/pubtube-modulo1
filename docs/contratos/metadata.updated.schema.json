@@ -1,0 +1,63 @@
+{
+  "title": "MetadataUpdatedEvent",
+  "description": "Evento emitido tras actualizar los metadatos de un video.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Identificador unico del evento."
+    },
+    "type": {
+      "type": "string",
+      "description": "Routing key / tipo de evento."
+    },
+    "version": {
+      "type": "integer",
+      "description": "Versión del esquema del payload."
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Momento de emisión del evento."
+    },
+    "correlationId": {
+      "type": "string",
+      "description": "Agrupa todos los eventos de un mismo flujo."
+    },
+    "causationId": {
+      "type": "string",
+      "description": "Evento que causó este evento."
+    },
+    "source": {
+      "type": "string",
+      "description": "Módulo emisor."
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "contentId": {
+          "type": "string",
+          "description": "ID único del contenido en la base de datos."
+        },
+        "version": {
+          "type": "integer",
+          "description": "Número de versión de metadata_version."
+        },
+        "title": {
+          "type": "string",
+          "description": "Título del video."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Etiquetas asociadas al contenido."
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Visibilidad del contenido."
+        }
+      },
+      "required": ["contentId", "version", "title", "tags", "visibility"]
+    }
+  },
+  "required": ["id", "type", "version", "timestamp", "correlationId", "causationId", "source", "payload"]
+}

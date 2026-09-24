@@ -1,0 +1,59 @@
+# lefthook.yml
+# Lefthook ejecuta hooks en paralelo (Go binary, sin overhead de Node en el hook).
+# Documentación: https://github.com/evilmartians/lefthook
+
+pre-commit:
+  # Ejecuta format y lint en PARALELO sobre los archivos staged solamente.
+  # El desarrollador recibe feedback en ~300ms antes de cada commit.
+  parallel: true
+  commands:
+    format:
+      # Solo formatea archivos TypeScript que están en el stage
+      glob: "src/**/*.ts"
+      run: npx prettier --write {staged_files}
+      # Re-agrega automáticamente al stage los archivos modificados por Prettier
+      stage_fixed: true
+
+    lint-fast:
+      # oxlint sobre archivos staged (~50ms incluso en proyectos grandes)
+      glob: "src/**/*.ts"
+      run: npx oxlint {staged_files}
+
+commit-msg:
+  commands:
+    conventional-commits:
+      # Valida Conventional Commits: type(scope): descripción
+      # Tipos válidos: feat | fix | docs | style | refactor | test | chore | ci | perf
+      # Ejemplos válidos:
+      #   feat(storage): implement multipart stream upload
+      #   fix(video-state): handle missing video gracefully
+      #   docs: update developer workflow in README
+      run: |
+        MSG=$(cat {1})
+        PATTERN="^(feat|fix|docs|style|refactor|test|chore|ci|perf)(\(.+\))?: .{1,100}$"
+        if ! echo "$MSG" | grep -qE "$PATTERN"; then
+          echo ""
+          echo "❌ Mensaje de commit inválido."
+          echo "   Formato requerido : type(scope): descripción corta"
+          echo "   Tipos válidos     : feat|fix|docs|style|refactor|test|chore|ci|perf"
+          echo ""
+          echo "   Ejemplos válidos:"
+          echo "     feat(storage): implement pass-through stream upload"
+          echo "     fix(video-state): handle missing video gracefully"
+          echo "     chore: update dependencies"
+          echo ""
+          echo "   Mensaje recibido  : $MSG"
+          echo ""
+          exit 1
+        fi
+
+pre-push:
+  # Pre-push permite checks más costosos (typecheck completo + ciclos).
+  # No bloquea commits frecuentes durante el desarrollo iterativo.
+  parallel: true
+  commands:
+    typecheck:
+      run: pnpm run typecheck
+
+    cycles:
+      run: pnpm run check:cycles

@@ -1,0 +1,77 @@
+services:
+  # ─────────────────────────────────────────────
+  # Base de Datos de Prueba – PostgreSQL (tmpfs)
+  # ─────────────────────────────────────────────
+  db-test:
+    image: postgres:16-alpine
+    container_name: module1-db-test
+    restart: 'no'
+    ports:
+      - '${POSTGRES_PORT:-5434}:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-test_pubtube}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test_pubtube_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-test_pubtube_db}
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=256m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-test_pubtube} -d ${POSTGRES_DB:-test_pubtube_db}']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      - module1-test-net
+
+  # ─────────────────────────────────────────────
+  # Almacenamiento de Objetos de Prueba – Garage (tmpfs)
+  # --single-node: configura layout mono-nodo automáticamente
+  # --default-bucket: crea key + bucket de contenido vía env vars
+  # ─────────────────────────────────────────────
+  garage-test:
+    image: dxflrs/garage:v2.4.1
+    container_name: module1-garage-test
+    restart: 'no'
+    entrypoint: ['/garage']
+    command: ['server', '--single-node', '--default-bucket']
+    ports:
+      - '${MINIO_API_PORT:-9100}:3900'
+    volumes:
+      - ./garage.test.toml:/etc/garage.toml:ro
+    tmpfs:
+      # noexec ausente a propósito: SQLite usa mmap que lo requiere
+      - /var/lib/garage:rw,nosuid,size=512m
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
+      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadminsecret}
+      GARAGE_DEFAULT_BUCKET: ${MINIO_BUCKET_CONTENT:-videos}
+    networks:
+      - module1-test-net
+
+  # ─────────────────────────────────────────────
+  # Aprovisionamiento del bucket de miniaturas
+  # El bucket de contenido ya lo crea --default-bucket arriba.
+  # Usa Alpine (tiene shell) — la imagen dxflrs/garage es distroless (scratch)
+  # ─────────────────────────────────────────────
+  garage-setup-test:
+    image: alpine:3.21
+    container_name: module1-garage-setup-test
+    restart: 'no'
+    depends_on:
+      garage-test:
+        condition: service_started
+    environment:
+      GARAGE_ADMIN_URL: http://garage-test:3903
+      GARAGE_ADMIN_TOKEN: pubtube-garage-test-admin-token
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadminsecret}
+      MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
+      MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
+    volumes:
+      - ./scripts/garage-setup.sh:/garage-setup.sh:ro
+    networks:
+      - module1-test-net
+    entrypoint: ['/bin/sh', '/garage-setup.sh']
+
+networks:
+  module1-test-net:
+    driver: bridge
