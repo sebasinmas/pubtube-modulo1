@@ -1,3 +1,9 @@
+name: pubtube-modulo1-test
+
+# Infraestructura efímera para pruebas de integración (tmpfs, sin volúmenes).
+# Usar SIEMPRE con --env-file .env.test (lo hace scripts/test-integration.ts).
+# Las migraciones y la suite E2E corren en el host contra estos puertos.
+
 services:
   # ─────────────────────────────────────────────
   # Base de Datos de Prueba – PostgreSQL (tmpfs)
@@ -7,15 +13,15 @@ services:
     container_name: module1-db-test
     restart: 'no'
     ports:
-      - '${POSTGRES_PORT:-5434}:5432'
+      - '${POSTGRES_PORT:?}:5432'
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-test_pubtube}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-test_pubtube_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-test_pubtube_db}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
     tmpfs:
       - /var/lib/postgresql/data:rw,noexec,nosuid,size=256m
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-test_pubtube} -d ${POSTGRES_DB:-test_pubtube_db}']
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 2s
       timeout: 3s
       retries: 15
@@ -24,8 +30,6 @@ services:
 
   # ─────────────────────────────────────────────
   # Almacenamiento de Objetos de Prueba – Garage (tmpfs)
-  # --single-node: configura layout mono-nodo automáticamente
-  # --default-bucket: crea key + bucket de contenido vía env vars
   # ─────────────────────────────────────────────
   garage-test:
     image: dxflrs/garage:v2.4.1
@@ -34,43 +38,54 @@ services:
     entrypoint: ['/garage']
     command: ['server', '--single-node', '--default-bucket']
     ports:
-      - '${MINIO_API_PORT:-9100}:3900'
+      - '${MINIO_API_PORT:?}:3900'
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?}
+      GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      GARAGE_DEFAULT_BUCKET: ${MINIO_BUCKET_CONTENT:-videos}
     volumes:
-      - ./garage.test.toml:/etc/garage.toml:ro
+      - ./garage.toml:/etc/garage.toml:ro
     tmpfs:
       # noexec ausente a propósito: SQLite usa mmap que lo requiere
       - /var/lib/garage:rw,nosuid,size=512m
-    environment:
-      GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
-      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadminsecret}
-      GARAGE_DEFAULT_BUCKET: ${MINIO_BUCKET_CONTENT:-videos}
+    healthcheck:
+      test: ['CMD', '/garage', 'status']
+      interval: 2s
+      timeout: 3s
+      retries: 15
     networks:
       - module1-test-net
 
   # ─────────────────────────────────────────────
-  # Aprovisionamiento del bucket de miniaturas
-  # El bucket de contenido ya lo crea --default-bucket arriba.
-  # Usa Alpine (tiene shell) — la imagen dxflrs/garage es distroless (scratch)
+  # Aprovisionamiento del bucket de miniaturas (one-shot)
+  # En el perfil "setup" para que `up --wait` no lo ignore en silencio:
+  # scripts/test-integration.ts lo ejecuta con `run --rm`, que propaga
+  # su código de salida y aborta la suite si el aprovisionamiento falla.
   # ─────────────────────────────────────────────
   garage-setup-test:
-    image: alpine:3.21
+    profiles: ['setup']
+    build:
+      context: ./scripts
+      dockerfile: garage-setup.Dockerfile
+    image: pubtube-garage-setup:local
     container_name: module1-garage-setup-test
     restart: 'no'
     depends_on:
       garage-test:
-        condition: service_started
+        condition: service_healthy
     environment:
       GARAGE_ADMIN_URL: http://garage-test:3903
-      GARAGE_ADMIN_TOKEN: pubtube-garage-test-admin-token
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-testminioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-testminioadminsecret}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
       MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
       MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
     volumes:
       - ./scripts/garage-setup.sh:/garage-setup.sh:ro
+    entrypoint: ['/bin/sh', '/garage-setup.sh']
     networks:
       - module1-test-net
-    entrypoint: ['/bin/sh', '/garage-setup.sh']
 
 networks:
   module1-test-net:

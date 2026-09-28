@@ -1,6 +1,11 @@
 node_modules
 dist
+coverage
 .git
+.claude
 .env
+.env.*
+!.env.example
+scrum
 tmp-demo
 npm-debug.log
