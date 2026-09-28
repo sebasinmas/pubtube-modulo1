@@ -6,6 +6,7 @@ import {
   ListPartsCommand,
   UploadPartCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
   type CompleteMultipartUploadCommandOutput,
   type Part,
 } from '@aws-sdk/client-s3';
@@ -130,5 +131,25 @@ export class MinioService {
     }
 
     return hash.digest('hex');
+  }
+
+  /*
+    Borra un objeto ya ensamblado (duplicado o con integridad fallida) para no
+    dejar huérfanos en el bucket. DeleteObject es idempotente en S3/Garage:
+    si la clave no existe responde 204 igual.
+  */
+  async eliminarObjeto(bucket: string, object: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: object }),
+    );
+  }
+
+  /*
+    URL persistente del objeto para el contrato video.uploaded. Se usa el
+    esquema s3:// (bucket + key) en vez de una URL HTTP: no caduca como una
+    prefirmada y no depende del endpoint con el que se firmó la API.
+  */
+  obtenerStorageUrl(bucket: string, object: string): string {
+    return `s3://${bucket}/${object}`;
   }
 }

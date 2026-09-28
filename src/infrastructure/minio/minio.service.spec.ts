@@ -4,6 +4,7 @@ import { Readable } from 'node:stream';
 import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { MinioService } from './minio.service.js';
@@ -135,6 +136,22 @@ describe('MinioService', () => {
 
       await expect(service.calcularChecksumSha256('videos', 'k')).resolves.toBe(
         createHash('sha256').digest('hex'),
+      );
+    });
+
+    it('eliminarObjeto envía un DeleteObject al bucket y clave indicados', async () => {
+      send.mockResolvedValueOnce({});
+
+      await service.eliminarObjeto('videos', 'id/video.mp4');
+
+      const command = send.mock.calls[0][0] as DeleteObjectCommand;
+      expect(command).toBeInstanceOf(DeleteObjectCommand);
+      expect(command.input).toEqual({ Bucket: 'videos', Key: 'id/video.mp4' });
+    });
+
+    it('obtenerStorageUrl devuelve una URL s3:// persistente (no prefirmada)', () => {
+      expect(service.obtenerStorageUrl('videos', 'id/video.mp4')).toBe(
+        's3://videos/id/video.mp4',
       );
     });
 
