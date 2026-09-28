@@ -16,11 +16,11 @@ Sus responsabilidades abarcan desde la ingesta de los archivos multimedia hasta 
 
 > **Nota:** Esto se actualizará a medida que avancen los Sprints del proyecto.
 
-| Historia                      | Estado                   | Descripción                                                                                                                                                           |
-| ----------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **US-A1: Carga resumible**    | ✅ Expuesta vía HTTP     | Subida por partes (S3 Multipart) con URLs prefirmadas, consulta de progreso y cálculo de checksum SHA-256 al completar.                                               |
-| **US-A5: Anti-duplicados**    | ✅ Expuesta vía HTTP     | `checksum` SHA-256 opcional en `init` (409 si ya existe), verificación de integridad al completar (422 si difiere) e índice único global sobre `checksum_sha256`.     |
-| **US-A4: Máquina de estados** | 🟡 Solo capa de servicio | Transiciones `borrador → listo → programado` en `VideoStateService` (aún sin endpoints HTTP). El paso `programado → publicado` lo realiza un cron job cada 5 minutos. |
+| Historia                      | Estado                   | Descripción                                                                                                                                                                                                                  |
+| ----------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **US-A1: Carga resumible**    | ✅ Expuesta vía HTTP     | Subida por partes (S3 Multipart) con URLs prefirmadas, consulta de progreso y cálculo de checksum SHA-256 al completar.                                                                                                      |
+| **US-A5: Anti-duplicados**    | ✅ Expuesta vía HTTP     | `checksum` SHA-256 opcional en `init` (409 "Este video ya existe en el catálogo"; también detiene subidas en curso), verificación de integridad al completar (422 si difiere) e índice único global sobre `checksum_sha256`. |
+| **US-A4: Máquina de estados** | 🟡 Solo capa de servicio | Transiciones `borrador → listo → programado` en `VideoStateService` (aún sin endpoints HTTP). El paso `programado → publicado` lo realiza un cron job cada 5 minutos.                                                        |
 
 ---
 
