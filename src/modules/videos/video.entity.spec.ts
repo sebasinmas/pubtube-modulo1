@@ -4,7 +4,7 @@ import { Video } from './video.entity.js';
 describe('Video Entity', () => {
   let video: Video;
   beforeEach(() => {
-    video = new Video('1', 'ajdjakd', new Date(), 'link');
+    video = new Video('1', null, new Date(), 'link');
   });
 
   it('el video debe instanciarse con un id', () => {
