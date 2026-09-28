@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { Ajv } from 'ajv';
 import {
   BadRequestException,
+  ConflictException,
+  HttpException,
   NotFoundException,
+  UnprocessableEntityException,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
@@ -11,6 +16,7 @@ import type { MessageBrokerService } from '../../../infrastructure/messaging/mes
 import type { SessionValidator } from '../../../infrastructure/auth/session-validator.interface.js';
 import type { VideoRepository } from '../repository/video.repository.js';
 import type { VideoRow } from '../../../db/schema.js';
+import { ChecksumDuplicadoError } from '../video.errors.js';
 
 const { GENERATED_UUID } = vi.hoisted(() => ({
   GENERATED_UUID: '00000000-0000-4000-8000-000000000001',
@@ -26,6 +32,16 @@ const SESSION_ID = '11111111-1111-4111-8111-111111111111';
 const BUCKET = 'videos';
 // Valor por defecto de MAX_UPLOAD_SIZE_BYTES (el test no define la variable).
 const MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+const OTHER_CONTENT_ID = '22222222-2222-4222-8222-222222222222';
+const CHECKSUM_CALCULADO = 'a'.repeat(64);
+const CHECKSUM_DISTINTO = 'b'.repeat(64);
+
+/** Cuerpo JSON que Nest enviaría para una HttpException. */
+async function cuerpoDelError(promesa: Promise<unknown>): Promise<unknown> {
+  const error: unknown = await promesa.catch((e: unknown) => e);
+  expect(error).toBeInstanceOf(HttpException);
+  return (error as HttpException).getResponse();
+}
 
 /** Fila de BD completa y consistente con lo que crea initUpload. */
 function videoRow(overrides: Partial<VideoRow> = {}): VideoRow {
@@ -40,6 +56,7 @@ function videoRow(overrides: Partial<VideoRow> = {}): VideoRow {
     minio_upload_id: 'upload-id-777',
     size_bytes: 10_485_760,
     checksum_sha256: null,
+    checksum_declarado: null,
     ...overrides,
   };
 }
@@ -60,11 +77,15 @@ describe('VideoUploadController', () => {
     listParts: Mock<MinioService['listParts']>;
     completeMultipartUpload: Mock<MinioService['completeMultipartUpload']>;
     calcularChecksumSha256: Mock<MinioService['calcularChecksumSha256']>;
+    eliminarObjeto: Mock<MinioService['eliminarObjeto']>;
+    obtenerStorageUrl: Mock<MinioService['obtenerStorageUrl']>;
   };
   let repository: {
     crearBorrador: Mock<VideoRepository['crearBorrador']>;
     buscarPorId: Mock<VideoRepository['buscarPorId']>;
+    buscarPorChecksum: Mock<VideoRepository['buscarPorChecksum']>;
     marcarComoSubido: Mock<VideoRepository['marcarComoSubido']>;
+    eliminar: Mock<VideoRepository['eliminar']>;
   };
   let broker: {
     publish: Mock<MessageBrokerService['publish']>;
@@ -96,15 +117,27 @@ describe('VideoUploadController', () => {
         }),
       calcularChecksumSha256: vi
         .fn<MinioService['calcularChecksumSha256']>()
-        .mockResolvedValue('a'.repeat(64)),
+        .mockResolvedValue(CHECKSUM_CALCULADO),
+      eliminarObjeto: vi
+        .fn<MinioService['eliminarObjeto']>()
+        .mockResolvedValue(undefined),
+      obtenerStorageUrl: vi
+        .fn<MinioService['obtenerStorageUrl']>()
+        .mockImplementation((bucket, key) => `s3://${bucket}/${key}`),
     };
     repository = {
       crearBorrador: vi
         .fn<VideoRepository['crearBorrador']>()
-        .mockImplementation((input) => Promise.resolve(videoRow(input))),
+        .mockImplementation(({ checksum_declarado = null, ...input }) =>
+          Promise.resolve(videoRow({ ...input, checksum_declarado })),
+        ),
       buscarPorId: vi
         .fn<VideoRepository['buscarPorId']>()
         .mockResolvedValue(videoRow()),
+      buscarPorChecksum: vi
+        .fn<VideoRepository['buscarPorChecksum']>()
+        .mockResolvedValue(null),
+      eliminar: vi.fn<VideoRepository['eliminar']>().mockResolvedValue(),
       marcarComoSubido: vi
         .fn<VideoRepository['marcarComoSubido']>()
         .mockImplementation((id, checksum) =>
@@ -140,7 +173,9 @@ describe('VideoUploadController', () => {
         object_key: `${GENERATED_UUID}/tutorial.mp4`,
         minio_upload_id: 'upload-id-777',
         size_bytes: 10_485_760,
+        checksum_declarado: null,
       });
+      expect(repository.buscarPorChecksum).not.toHaveBeenCalled();
     });
 
     it('acepta video/quicktime (.mov)', async () => {
@@ -228,6 +263,61 @@ describe('VideoUploadController', () => {
       expect(repository.crearBorrador).not.toHaveBeenCalled();
     });
 
+    describe('checksum declarado (US-A5)', () => {
+      it('guarda el checksum normalizado a minúsculas si no existe contenido con ese hash', async () => {
+        await expect(
+          controller.initUpload(
+            validInitPayload({ checksum: 'ABCDEF'.padEnd(64, '0') }),
+            '',
+          ),
+        ).resolves.toMatchObject({ status: 201 });
+
+        const normalizado = 'abcdef'.padEnd(64, '0');
+        expect(repository.buscarPorChecksum).toHaveBeenCalledWith(normalizado);
+        expect(repository.crearBorrador).toHaveBeenCalledWith(
+          expect.objectContaining({ checksum_declarado: normalizado }),
+        );
+      });
+
+      it('responde 409 DUPLICATE_CONTENT con el contenido previo sin iniciar el multipart', async () => {
+        repository.buscarPorChecksum.mockResolvedValueOnce(
+          videoRow({
+            id: OTHER_CONTENT_ID,
+            checksum_sha256: CHECKSUM_CALCULADO,
+          }),
+        );
+
+        const body = await cuerpoDelError(
+          controller.initUpload(
+            validInitPayload({ checksum: CHECKSUM_CALCULADO }),
+            '',
+          ),
+        );
+
+        expect(body).toMatchObject({
+          statusCode: 409,
+          error: 'DUPLICATE_CONTENT',
+          existingContentId: OTHER_CONTENT_ID,
+        });
+        expect(minio.createMultipartUpload).not.toHaveBeenCalled();
+        expect(repository.crearBorrador).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['no hexadecimal', 'z'.repeat(64)],
+        ['63 caracteres', 'a'.repeat(63)],
+        ['65 caracteres', 'a'.repeat(65)],
+        ['vacío', ''],
+        ['número', 12345],
+      ])('rechaza checksum %s con 400', async (_caso, checksum) => {
+        await expect(
+          controller.initUpload(validInitPayload({ checksum }), ''),
+        ).rejects.toThrow(BadRequestException);
+        expect(repository.buscarPorChecksum).not.toHaveBeenCalled();
+        expect(minio.createMultipartUpload).not.toHaveBeenCalled();
+      });
+    });
+
     it.todo(
       'rechaza filenames con separadores de ruta (../, /) que alteran la object key',
     );
@@ -309,7 +399,7 @@ describe('VideoUploadController', () => {
       expect(result).toEqual({
         status: 200,
         contentId: SESSION_ID,
-        checksumSha256: 'a'.repeat(64),
+        checksumSha256: CHECKSUM_CALCULADO,
       });
       expect(minio.completeMultipartUpload).toHaveBeenCalledWith(
         BUCKET,
@@ -322,15 +412,17 @@ describe('VideoUploadController', () => {
       );
       expect(repository.marcarComoSubido).toHaveBeenCalledWith(
         SESSION_ID,
-        'a'.repeat(64),
+        CHECKSUM_CALCULADO,
       );
       expect(broker.publish).toHaveBeenCalledWith(
         'video.uploaded',
         {
           contentId: SESSION_ID,
+          checksum: CHECKSUM_CALCULADO,
+          storageUrl: `s3://${BUCKET}/${SESSION_ID}/tutorial.mp4`,
           sessionId: SESSION_ID,
           sizeBytes: 10_485_760,
-          checksumSha256: 'a'.repeat(64),
+          checksumSha256: CHECKSUM_CALCULADO,
           uploadedAt: expect.any(String) as string,
         },
         { correlationId: 'corr-id' },
@@ -393,8 +485,122 @@ describe('VideoUploadController', () => {
     it.todo(
       'es idempotente si se llama dos veces con la misma sesión (hoy el segundo complete falla en S3)',
     );
-    it.todo(
-      'el payload de video.uploaded cumple docs/contratos/video.uploaded.schema.json (hoy difiere: checksum/storageUrl)',
-    );
+
+    it('el payload de video.uploaded cumple docs/contratos/video.uploaded.schema.json', async () => {
+      const schema: object = JSON.parse(
+        readFileSync('docs/contratos/video.uploaded.schema.json', 'utf8'),
+      ) as object;
+      const validar = new Ajv({ allErrors: true }).compile(schema);
+      // El sobre lo arma el broker; aquí se valida el payload dentro de un
+      // sobre mínimo válido.
+      await controller.completeUpload(SESSION_ID, body, 'corr-id');
+      const [[type, payload]] = broker.publish.mock.calls;
+
+      const valido = validar({
+        id: 'evt-1',
+        type,
+        version: 1,
+        timestamp: new Date(0).toISOString(),
+        correlationId: 'corr-id',
+        causationId: 'corr-id',
+        source: 'module1-content',
+        payload,
+      });
+      expect(validar.errors ?? []).toEqual([]);
+      expect(valido).toBe(true);
+    });
+
+    describe('verificación de integridad (US-A5)', () => {
+      it('publica si el hash calculado coincide con el declarado', async () => {
+        repository.buscarPorId.mockResolvedValueOnce(
+          videoRow({ checksum_declarado: CHECKSUM_CALCULADO }),
+        );
+
+        await expect(
+          controller.completeUpload(SESSION_ID, body, ''),
+        ).resolves.toMatchObject({ checksumSha256: CHECKSUM_CALCULADO });
+        expect(broker.publish).toHaveBeenCalledOnce();
+        expect(minio.eliminarObjeto).not.toHaveBeenCalled();
+      });
+
+      it('responde 422 INTEGRITY_CHECK_FAILED, elimina objeto y sesión y no publica', async () => {
+        repository.buscarPorId.mockResolvedValueOnce(
+          videoRow({ checksum_declarado: CHECKSUM_DISTINTO }),
+        );
+
+        const error = controller.completeUpload(SESSION_ID, body, '');
+        await expect(error).rejects.toThrow(UnprocessableEntityException);
+        expect(await cuerpoDelError(error)).toMatchObject({
+          statusCode: 422,
+          error: 'INTEGRITY_CHECK_FAILED',
+          expected: CHECKSUM_DISTINTO,
+          actual: CHECKSUM_CALCULADO,
+        });
+        expect(minio.eliminarObjeto).toHaveBeenCalledWith(
+          BUCKET,
+          `${SESSION_ID}/tutorial.mp4`,
+        );
+        expect(repository.eliminar).toHaveBeenCalledWith(SESSION_ID);
+        expect(repository.marcarComoSubido).not.toHaveBeenCalled();
+        expect(broker.publish).not.toHaveBeenCalled();
+      });
+
+      it('responde 422 aunque falle la limpieza del objeto', async () => {
+        repository.buscarPorId.mockResolvedValueOnce(
+          videoRow({ checksum_declarado: CHECKSUM_DISTINTO }),
+        );
+        minio.eliminarObjeto.mockRejectedValueOnce(new Error('S3 caído'));
+
+        await expect(
+          controller.completeUpload(SESSION_ID, body, ''),
+        ).rejects.toThrow(UnprocessableEntityException);
+        expect(repository.eliminar).toHaveBeenCalledWith(SESSION_ID);
+      });
+
+      it('sin checksum declarado no compara y persiste el calculado', async () => {
+        await controller.completeUpload(SESSION_ID, body, '');
+
+        expect(repository.marcarComoSubido).toHaveBeenCalledWith(
+          SESSION_ID,
+          CHECKSUM_CALCULADO,
+        );
+        expect(minio.eliminarObjeto).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('duplicado concurrente (índice único, US-A5)', () => {
+      it('traduce ChecksumDuplicadoError a 409 con el contenido previo, limpia y no publica', async () => {
+        repository.marcarComoSubido.mockRejectedValueOnce(
+          new ChecksumDuplicadoError(CHECKSUM_CALCULADO, OTHER_CONTENT_ID),
+        );
+
+        const error = controller.completeUpload(SESSION_ID, body, '');
+        await expect(error).rejects.toThrow(ConflictException);
+        expect(await cuerpoDelError(error)).toMatchObject({
+          statusCode: 409,
+          error: 'DUPLICATE_CONTENT',
+          existingContentId: OTHER_CONTENT_ID,
+        });
+        expect(minio.eliminarObjeto).toHaveBeenCalledWith(
+          BUCKET,
+          `${SESSION_ID}/tutorial.mp4`,
+        );
+        expect(repository.eliminar).toHaveBeenCalledWith(SESSION_ID);
+        expect(broker.publish).not.toHaveBeenCalled();
+      });
+
+      it('propaga otros errores de BD sin borrar la carga', async () => {
+        repository.marcarComoSubido.mockRejectedValueOnce(
+          new Error('BD caída'),
+        );
+
+        await expect(
+          controller.completeUpload(SESSION_ID, body, ''),
+        ).rejects.toThrow('BD caída');
+        expect(minio.eliminarObjeto).not.toHaveBeenCalled();
+        expect(repository.eliminar).not.toHaveBeenCalled();
+        expect(broker.publish).not.toHaveBeenCalled();
+      });
+    });
   });
 });
