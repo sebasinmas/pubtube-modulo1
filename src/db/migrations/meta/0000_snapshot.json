@@ -55,12 +55,7 @@
     "public.video_status": {
       "name": "video_status",
       "schema": "public",
-      "values": [
-        "borrador",
-        "listo",
-        "programado",
-        "publicado"
-      ]
+      "values": ["borrador", "listo", "programado", "publicado"]
     }
   },
   "schemas": {},
