@@ -19,6 +19,7 @@ Sus responsabilidades abarcan desde la ingesta de los archivos multimedia hasta 
 | Historia                      | Estado                   | Descripción                                                                                                                                                           |
 | ----------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **US-A1: Carga resumible**    | ✅ Expuesta vía HTTP     | Subida por partes (S3 Multipart) con URLs prefirmadas, consulta de progreso y cálculo de checksum SHA-256 al completar.                                               |
+| **US-A5: Anti-duplicados**    | ✅ Expuesta vía HTTP     | `checksum` SHA-256 opcional en `init` (409 si ya existe), verificación de integridad al completar (422 si difiere) e índice único global sobre `checksum_sha256`.     |
 | **US-A4: Máquina de estados** | 🟡 Solo capa de servicio | Transiciones `borrador → listo → programado` en `VideoStateService` (aún sin endpoints HTTP). El paso `programado → publicado` lo realiza un cron job cada 5 minutos. |
 
 ---
@@ -33,6 +34,8 @@ Sus responsabilidades abarcan desde la ingesta de los archivos multimedia hasta 
 | Base de datos  | PostgreSQL 16 + Drizzle ORM (migraciones en `src/db/migrations/`)                                         |
 | Object Storage | **[Garage](https://garagehq.deuxfleurs.fr/) `v2.4.1`** (compatible S3), accedido con `@aws-sdk/client-s3` |
 | Mensajería     | Stub en memoria sobre `@nestjs/event-emitter` (pendiente de reemplazo por RabbitMQ)                       |
+
+La documentación OpenAPI (Swagger UI) queda disponible en `/api/docs` con la API corriendo.
 
 Las decisiones de arquitectura se documentan en [`ADR/`](ADR/). En particular, [ADR 002](ADR/002-migracion-minio-a-garage.md) explica la migración de MinIO a Garage.
 
