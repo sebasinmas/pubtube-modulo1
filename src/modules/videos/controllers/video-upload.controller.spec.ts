@@ -10,7 +10,7 @@ import type { MinioService } from '../../../infrastructure/minio/minio.service.j
 import type { MessageBrokerService } from '../../../infrastructure/messaging/message-broker.service.js';
 import type { SessionValidator } from '../../../infrastructure/auth/session-validator.interface.js';
 import type { VideoRepository } from '../repository/video.repository.js';
-import type { videos } from '../../../db/schema.js';
+import type { VideoRow } from '../../../db/schema.js';
 
 const { GENERATED_UUID } = vi.hoisted(() => ({
   GENERATED_UUID: '00000000-0000-4000-8000-000000000001',
@@ -26,8 +26,6 @@ const SESSION_ID = '11111111-1111-4111-8111-111111111111';
 const BUCKET = 'videos';
 // Valor por defecto de MAX_UPLOAD_SIZE_BYTES (el test no define la variable).
 const MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
-
-type VideoRow = typeof videos.$inferSelect;
 
 /** Fila de BD completa y consistente con lo que crea initUpload. */
 function videoRow(overrides: Partial<VideoRow> = {}): VideoRow {
@@ -45,13 +43,6 @@ function videoRow(overrides: Partial<VideoRow> = {}): VideoRow {
     ...overrides,
   };
 }
-
-/**
- * "No encontrado" del repositorio. Los métodos devuelven `row ?? null`, pero
- * TypeScript infiere su tipo sin `| null` (el destructuring de arrays no
- * incluye undefined), así que el cast es necesario para probar ese camino.
- */
-const NOT_FOUND = null as unknown as VideoRow;
 
 function validInitPayload(overrides: Record<string, unknown> = {}) {
   return {
@@ -261,7 +252,7 @@ describe('VideoUploadController', () => {
     });
 
     it('responde 404 si la sesión no existe, sin firmar nada', async () => {
-      repository.buscarPorId.mockResolvedValueOnce(NOT_FOUND);
+      repository.buscarPorId.mockResolvedValueOnce(null);
 
       await expect(controller.getPresignedUrl(SESSION_ID, 1)).rejects.toThrow(
         NotFoundException,
@@ -291,7 +282,7 @@ describe('VideoUploadController', () => {
     });
 
     it('responde 404 si la sesión no existe', async () => {
-      repository.buscarPorId.mockResolvedValueOnce(NOT_FOUND);
+      repository.buscarPorId.mockResolvedValueOnce(null);
 
       await expect(controller.getUploadStatus(SESSION_ID, '')).rejects.toThrow(
         NotFoundException,
@@ -365,7 +356,7 @@ describe('VideoUploadController', () => {
     });
 
     it('responde 404 si la sesión no existe, sin tocar el storage', async () => {
-      repository.buscarPorId.mockResolvedValueOnce(NOT_FOUND);
+      repository.buscarPorId.mockResolvedValueOnce(null);
 
       await expect(
         controller.completeUpload(SESSION_ID, body, ''),
@@ -375,7 +366,7 @@ describe('VideoUploadController', () => {
     });
 
     it('no publica el evento si el video desaparece antes de persistir el checksum', async () => {
-      repository.marcarComoSubido.mockResolvedValueOnce(NOT_FOUND);
+      repository.marcarComoSubido.mockResolvedValueOnce(null);
 
       await expect(
         controller.completeUpload(SESSION_ID, body, ''),

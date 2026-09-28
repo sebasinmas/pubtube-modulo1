@@ -15,6 +15,7 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import type { Part } from '@aws-sdk/client-s3';
 import { MinioService } from '../../../infrastructure/minio/minio.service.js';
 import { MessageBrokerService } from '../../../infrastructure/messaging/message-broker.service.js';
 import { VideoRepository } from '../repository/video.repository.js';
@@ -43,7 +44,7 @@ export class VideoUploadController {
   async initUpload(
     @Body() payload: any,
     @Headers('x-correlation-id') correlationId: string,
-  ) {
+  ): Promise<{ status: number; uploadSessionId: string }> {
     await this.sessionValidator.validar();
 
     const finalCorrelationId = correlationId || randomUUID();
@@ -96,7 +97,7 @@ export class VideoUploadController {
   async getPresignedUrl(
     @Param('sessionId') sessionId: string,
     @Param('partNumber', ParseIntPipe) partNumber: number,
-  ) {
+  ): Promise<{ url: string }> {
     const video = await this.videoRepository.buscarPorId(sessionId);
     if (!video) throw new NotFoundException('Sesión de subida no encontrada');
 
@@ -114,7 +115,7 @@ export class VideoUploadController {
   async getUploadStatus(
     @Param('sessionId') sessionId: string,
     @Headers('x-correlation-id') correlationId: string,
-  ) {
+  ): Promise<{ status: number; parts: Part[] }> {
     this.logger.log(
       `Consultando progreso de sesion: ${sessionId} [CorrelationID: ${correlationId || 'N/A'}]`,
     );
@@ -140,7 +141,11 @@ export class VideoUploadController {
     @Param('sessionId') sessionId: string,
     @Body() payload: { parts: { PartNumber: number; ETag: string }[] },
     @Headers('x-correlation-id') correlationId: string,
-  ) {
+  ): Promise<{
+    status: number;
+    contentId: string;
+    checksumSha256: string;
+  }> {
     const finalCorrelationId = correlationId || randomUUID();
     this.logger.log(
       `Iniciando ensamblaje de chunks [SessionID: ${sessionId}] [CorrelationID: ${finalCorrelationId}]`,

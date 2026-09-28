@@ -6,6 +6,8 @@ import {
   ListPartsCommand,
   UploadPartCommand,
   GetObjectCommand,
+  type CompleteMultipartUploadCommandOutput,
+  type Part,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createHash } from 'node:crypto';
@@ -68,7 +70,11 @@ export class MinioService {
     return response.UploadId!;
   }
 
-  async listParts(bucket: string, object: string, uploadId: string) {
+  async listParts(
+    bucket: string,
+    object: string,
+    uploadId: string,
+  ): Promise<Part[]> {
     const command = new ListPartsCommand({
       Bucket: bucket,
       Key: object,
@@ -84,7 +90,7 @@ export class MinioService {
     object: string,
     uploadId: string,
     parts: { partNumber: number; etag: string }[],
-  ) {
+  ): Promise<CompleteMultipartUploadCommandOutput> {
     const formattedParts = parts.map((p) => ({
       PartNumber: p.partNumber,
       ETag: p.etag,

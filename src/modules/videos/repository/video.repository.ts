@@ -1,6 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { eq, and } from 'drizzle-orm';
-import { videos, VideoStatusValue } from '../../../db/schema.js';
+import {
+  videos,
+  type VideoRow,
+  type VideoStatusValue,
+} from '../../../db/schema.js';
 import type { DrizzleDb } from '../../../db/types.js';
 
 export interface CrearBorradorInput {
@@ -15,7 +19,7 @@ export interface CrearBorradorInput {
 export class VideoRepository {
   constructor(@Inject('DATABASE_CONNECTION') private readonly db: DrizzleDb) {}
 
-  async crearBorrador(input: CrearBorradorInput) {
+  async crearBorrador(input: CrearBorradorInput): Promise<VideoRow> {
     const [row] = await this.db
       .insert(videos)
       .values({
@@ -30,7 +34,7 @@ export class VideoRepository {
     return row;
   }
 
-  async buscarPorId(id: string) {
+  async buscarPorId(id: string): Promise<VideoRow | null> {
     const [row] = await this.db
       .select()
       .from(videos)
@@ -39,7 +43,10 @@ export class VideoRepository {
     return row ?? null;
   }
 
-  async marcarComoSubido(id: string, checksumSha256: string) {
+  async marcarComoSubido(
+    id: string,
+    checksumSha256: string,
+  ): Promise<VideoRow | null> {
     const [row] = await this.db
       .update(videos)
       .set({ status: 'borrador', checksum_sha256: checksumSha256 })
@@ -52,7 +59,7 @@ export class VideoRepository {
     id: string,
     estadoEsperado: VideoStatusValue,
     nuevoEstado: VideoStatusValue,
-  ) {
+  ): Promise<VideoRow | null> {
     const [row] = await this.db
       .update(videos)
       .set({ status: nuevoEstado })

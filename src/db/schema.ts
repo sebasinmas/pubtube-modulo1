@@ -29,3 +29,5 @@ export const videos = pgTable('videos', {
   size_bytes: bigint('size_bytes', { mode: 'number' }).notNull(),
   checksum_sha256: varchar('checksum_sha256', { length: 64 }),
 });
+
+export type VideoRow = typeof videos.$inferSelect;
