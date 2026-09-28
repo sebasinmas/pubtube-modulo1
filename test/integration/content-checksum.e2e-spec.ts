@@ -15,7 +15,10 @@ import { Ajv } from 'ajv';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { HeadObjectCommand } from '@aws-sdk/client-s3';
+import {
+  HeadObjectCommand,
+  ListMultipartUploadsCommand,
+} from '@aws-sdk/client-s3';
 import { eq } from 'drizzle-orm';
 import { AppModule } from '../../src/app.module.js';
 import { videos } from '../../src/db/schema.js';
@@ -30,6 +33,7 @@ import { MinioService } from '../../src/infrastructure/minio/minio.service.js';
  */
 
 const BUCKET = process.env.MINIO_BUCKET_CONTENT ?? 'videos';
+const MENSAJE_DUPLICADO = 'Este video ya existe en el catálogo';
 
 function sha256(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex');
@@ -131,6 +135,16 @@ describe('US-A5 — checksum e integridad de carga', () => {
     }
   }
 
+  async function multipartAbierto(sessionId: string): Promise<boolean> {
+    const res = await minio.client.send(
+      new ListMultipartUploadsCommand({
+        Bucket: BUCKET,
+        Prefix: `${sessionId}/`,
+      }),
+    );
+    return (res.Uploads ?? []).length > 0;
+  }
+
   async function fila(id: string) {
     const [row] = await db.select().from(videos).where(eq(videos.id, id));
     return row ?? null;
@@ -186,8 +200,10 @@ describe('US-A5 — checksum e integridad de carga', () => {
     const res = await iniciar(contenido, sha256(contenido).toUpperCase());
 
     expect(res.status).toBe(409);
-    expect(res.body).toMatchObject({
+    expect(res.body).toEqual({
+      statusCode: 409,
       error: 'DUPLICATE_CONTENT',
+      message: MENSAJE_DUPLICADO,
       existingContentId: existente,
     });
     expect(await db.$count(videos)).toBe(filasAntes);
@@ -250,6 +266,38 @@ describe('US-A5 — checksum e integridad de carga', () => {
 
     expect(eventos).toHaveLength(1);
     expect(eventos[0].payload).toMatchObject({ contentId: ganadora, checksum });
+  }, 30_000);
+
+  it('subida en curso: si otra carga del mismo archivo se completa, la siguiente parte responde 409 y libera todo', async () => {
+    const contenido = randomBytes(64 * 1024);
+    const checksum = sha256(contenido);
+
+    const [resA, resB] = await Promise.all([
+      iniciar(contenido, checksum).expect(201),
+      iniciar(contenido, checksum).expect(201),
+    ]);
+    const a = (resA.body as { uploadSessionId: string }).uploadSessionId;
+    const b = (resB.body as { uploadSessionId: string }).uploadSessionId;
+    // B alcanza a subir una parte antes de que A termine.
+    await subirParte(b, contenido);
+    expect(await multipartAbierto(b)).toBe(true);
+
+    await completar(a, await subirParte(a, contenido)).expect(200);
+
+    const res = await request(server()).get(`/api/content/${b}/part/2`);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({
+      statusCode: 409,
+      error: 'DUPLICATE_CONTENT',
+      message: MENSAJE_DUPLICADO,
+      existingContentId: a,
+    });
+
+    // Nada que reanudar: multipart abortado y sesión eliminada.
+    expect(await multipartAbierto(b)).toBe(false);
+    expect(await fila(b)).toBeNull();
+    await request(server()).get(`/api/content/upload/${b}/status`).expect(404);
+    expect(eventos).toHaveLength(1);
   }, 30_000);
 
   it.each([
