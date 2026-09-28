@@ -68,11 +68,13 @@ function normalizarChecksumDeclarado(valor: unknown): string | null {
   return valor.toLowerCase();
 }
 
+export const MENSAJE_DUPLICADO = 'Este video ya existe en el catálogo';
+
 function contenidoDuplicado(existingContentId: string): ConflictException {
   return new ConflictException({
     statusCode: 409,
     error: 'DUPLICATE_CONTENT',
-    message: 'Ya existe contenido con el mismo checksum',
+    message: MENSAJE_DUPLICADO,
     existingContentId,
   });
 }
@@ -171,12 +173,20 @@ export class VideoUploadController {
   }
 
   @Get(':sessionId/part/:partNumber')
+  @ApiNotFoundResponse({ description: 'Sesión de subida no encontrada' })
+  @ApiConflictResponse({
+    description:
+      'Otra carga del mismo archivo ya se completó: se aborta el multipart, ' +
+      'se elimina la sesión y el cliente debe detener la subida.',
+    type: DuplicateContentErrorDto,
+  })
   async getPresignedUrl(
     @Param('sessionId') sessionId: string,
     @Param('partNumber', ParseIntPipe) partNumber: number,
   ): Promise<{ url: string }> {
     const video = await this.videoRepository.buscarPorId(sessionId);
     if (!video) throw new NotFoundException('Sesión de subida no encontrada');
+    await this.detenerSiYaExiste(video);
 
     const url = await this.minioService.getPresignedUrl(
       this.bucketName,
@@ -189,6 +199,13 @@ export class VideoUploadController {
   }
 
   @Get('upload/:sessionId/status')
+  @ApiNotFoundResponse({ description: 'Sesión de subida no encontrada' })
+  @ApiConflictResponse({
+    description:
+      'Otra carga del mismo archivo ya se completó: se aborta el multipart, ' +
+      'se elimina la sesión y el cliente debe detener la subida.',
+    type: DuplicateContentErrorDto,
+  })
   async getUploadStatus(
     @Param('sessionId') sessionId: string,
     @Headers('x-correlation-id') correlationId: string,
@@ -199,6 +216,7 @@ export class VideoUploadController {
 
     const video = await this.videoRepository.buscarPorId(sessionId);
     if (!video) throw new NotFoundException('Sesión de subida no encontrada');
+    await this.detenerSiYaExiste(video);
 
     const parts = await this.minioService.listParts(
       this.bucketName,
@@ -219,7 +237,7 @@ export class VideoUploadController {
   @ApiConflictResponse({
     description:
       'Otro contenido con el mismo checksum se completó antes (carga concurrente). ' +
-      'El objeto y la sesión duplicados se eliminan.',
+      'El multipart/objeto y la sesión duplicados se eliminan.',
     type: DuplicateContentErrorDto,
   })
   @ApiUnprocessableEntityResponse({
@@ -244,6 +262,8 @@ export class VideoUploadController {
 
     const video = await this.videoRepository.buscarPorId(sessionId);
     if (!video) throw new NotFoundException('Sesión de subida no encontrada');
+    // Evita ensamblar y hashear un archivo que ya se sabe duplicado.
+    await this.detenerSiYaExiste(video);
 
     const partesFormateadas = payload.parts.map((p) => ({
       partNumber: p.PartNumber,
@@ -271,7 +291,7 @@ export class VideoUploadController {
       this.logger.warn(
         `Integridad fallida [SessionID: ${sessionId}] [CorrelationID: ${finalCorrelationId}]`,
       );
-      await this.descartarCarga(video);
+      await this.descartarCarga(video, 'ensamblada');
       throw new UnprocessableEntityException({
         statusCode: 422,
         error: 'INTEGRITY_CHECK_FAILED',
@@ -295,7 +315,7 @@ export class VideoUploadController {
       this.logger.warn(
         `Carga duplicada al completar [SessionID: ${sessionId}] [ExistingContentID: ${error.existingContentId}] [CorrelationID: ${finalCorrelationId}]`,
       );
-      await this.descartarCarga(video);
+      await this.descartarCarga(video, 'ensamblada');
       throw contenidoDuplicado(error.existingContentId);
     }
     if (!videoActualizado) {
@@ -331,16 +351,52 @@ export class VideoUploadController {
   }
 
   /*
-    Elimina el objeto ensamblado y la sesión (fila en borrador) de una carga
-    rechazada, para no dejar huérfanos. Un fallo aquí se loguea pero no oculta
-    el error original de la carga.
+    US-A5: si mientras esta sesión subía partes otra carga del mismo archivo
+    (mismo checksum declarado) ya se completó, se corta la subida con 409 en
+    la siguiente petición del cliente en vez de dejarle subir el archivo
+    entero: se aborta el multipart (Garage libera las partes) y se elimina la
+    sesión, así el cliente no tiene nada que reanudar.
   */
-  private async descartarCarga(video: VideoRow): Promise<void> {
+  private async detenerSiYaExiste(video: VideoRow): Promise<void> {
+    if (!video.checksum_declarado) return;
+
+    const existente = await this.videoRepository.buscarPorChecksum(
+      video.checksum_declarado,
+    );
+    if (!existente || existente.id === video.id) return;
+
+    this.logger.warn(
+      `Subida en curso detenida por duplicado [SessionID: ${video.id}] [ExistingContentID: ${existente.id}]`,
+    );
+    await this.descartarCarga(video, 'en-curso');
+    throw contenidoDuplicado(existente.id);
+  }
+
+  /*
+    Libera en Garage lo que haya dejado una carga rechazada (multipart abierto
+    o objeto ya ensamblado) y elimina la sesión (fila en borrador), para no
+    dejar huérfanos. Un fallo aquí se loguea pero no oculta el error original.
+  */
+  private async descartarCarga(
+    video: VideoRow,
+    etapa: 'en-curso' | 'ensamblada',
+  ): Promise<void> {
     try {
-      await this.minioService.eliminarObjeto(this.bucketName, video.object_key);
+      if (etapa === 'en-curso') {
+        await this.minioService.abortarMultipartUpload(
+          this.bucketName,
+          video.object_key,
+          video.minio_upload_id,
+        );
+      } else {
+        await this.minioService.eliminarObjeto(
+          this.bucketName,
+          video.object_key,
+        );
+      }
     } catch (error) {
       this.logger.error(
-        `No se pudo eliminar el objeto huérfano ${video.object_key}`,
+        `No se pudo liberar el almacenamiento de ${video.object_key}`,
         error,
       );
     }

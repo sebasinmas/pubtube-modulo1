@@ -10,7 +10,10 @@ import {
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
-import { VideoUploadController } from './video-upload.controller.js';
+import {
+  MENSAJE_DUPLICADO,
+  VideoUploadController,
+} from './video-upload.controller.js';
 import type { MinioService } from '../../../infrastructure/minio/minio.service.js';
 import type { MessageBrokerService } from '../../../infrastructure/messaging/message-broker.service.js';
 import type { SessionValidator } from '../../../infrastructure/auth/session-validator.interface.js';
@@ -78,6 +81,7 @@ describe('VideoUploadController', () => {
     completeMultipartUpload: Mock<MinioService['completeMultipartUpload']>;
     calcularChecksumSha256: Mock<MinioService['calcularChecksumSha256']>;
     eliminarObjeto: Mock<MinioService['eliminarObjeto']>;
+    abortarMultipartUpload: Mock<MinioService['abortarMultipartUpload']>;
     obtenerStorageUrl: Mock<MinioService['obtenerStorageUrl']>;
   };
   let repository: {
@@ -120,6 +124,9 @@ describe('VideoUploadController', () => {
         .mockResolvedValue(CHECKSUM_CALCULADO),
       eliminarObjeto: vi
         .fn<MinioService['eliminarObjeto']>()
+        .mockResolvedValue(undefined),
+      abortarMultipartUpload: vi
+        .fn<MinioService['abortarMultipartUpload']>()
         .mockResolvedValue(undefined),
       obtenerStorageUrl: vi
         .fn<MinioService['obtenerStorageUrl']>()
@@ -294,9 +301,10 @@ describe('VideoUploadController', () => {
           ),
         );
 
-        expect(body).toMatchObject({
+        expect(body).toEqual({
           statusCode: 409,
           error: 'DUPLICATE_CONTENT',
+          message: 'Este video ya existe en el catálogo',
           existingContentId: OTHER_CONTENT_ID,
         });
         expect(minio.createMultipartUpload).not.toHaveBeenCalled();
@@ -601,6 +609,76 @@ describe('VideoUploadController', () => {
         expect(repository.eliminar).not.toHaveBeenCalled();
         expect(broker.publish).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('detención de una subida en curso por duplicado (US-A5)', () => {
+    const body = { parts: [{ PartNumber: 1, ETag: '"etag-1"' }] };
+    const sesionConChecksum = (): VideoRow =>
+      videoRow({ checksum_declarado: CHECKSUM_CALCULADO });
+    const otroYaCompletado = (): VideoRow =>
+      videoRow({ id: OTHER_CONTENT_ID, checksum_sha256: CHECKSUM_CALCULADO });
+
+    const endpoints: [string, () => Promise<unknown>][] = [
+      ['GET part', () => controller.getPresignedUrl(SESSION_ID, 2)],
+      ['GET status', () => controller.getUploadStatus(SESSION_ID, '')],
+      ['POST complete', () => controller.completeUpload(SESSION_ID, body, '')],
+    ];
+
+    it.each(endpoints)(
+      '%s responde 409, aborta el multipart y elimina la sesión si otra carga ya se completó',
+      async (_caso, llamar) => {
+        repository.buscarPorId.mockResolvedValueOnce(sesionConChecksum());
+        repository.buscarPorChecksum.mockResolvedValueOnce(otroYaCompletado());
+
+        expect(await cuerpoDelError(llamar())).toEqual({
+          statusCode: 409,
+          error: 'DUPLICATE_CONTENT',
+          message: MENSAJE_DUPLICADO,
+          existingContentId: OTHER_CONTENT_ID,
+        });
+        expect(minio.abortarMultipartUpload).toHaveBeenCalledWith(
+          BUCKET,
+          `${SESSION_ID}/tutorial.mp4`,
+          'upload-id-777',
+        );
+        expect(repository.eliminar).toHaveBeenCalledWith(SESSION_ID);
+        expect(minio.getPresignedUrl).not.toHaveBeenCalled();
+        expect(minio.listParts).not.toHaveBeenCalled();
+        expect(minio.completeMultipartUpload).not.toHaveBeenCalled();
+        expect(broker.publish).not.toHaveBeenCalled();
+      },
+    );
+
+    it('no detiene la sesión si el checksum encontrado es el suyo propio', async () => {
+      repository.buscarPorId.mockResolvedValueOnce(sesionConChecksum());
+      repository.buscarPorChecksum.mockResolvedValueOnce(
+        videoRow({ checksum_sha256: CHECKSUM_CALCULADO }),
+      );
+
+      await expect(
+        controller.getPresignedUrl(SESSION_ID, 1),
+      ).resolves.toHaveProperty('url');
+      expect(minio.abortarMultipartUpload).not.toHaveBeenCalled();
+    });
+
+    it('sin checksum declarado no consulta duplicados', async () => {
+      await controller.getPresignedUrl(SESSION_ID, 1);
+
+      expect(repository.buscarPorChecksum).not.toHaveBeenCalled();
+    });
+
+    it('responde 409 aunque falle el abort del multipart', async () => {
+      repository.buscarPorId.mockResolvedValueOnce(sesionConChecksum());
+      repository.buscarPorChecksum.mockResolvedValueOnce(otroYaCompletado());
+      minio.abortarMultipartUpload.mockRejectedValueOnce(
+        new Error('NoSuchUpload'),
+      );
+
+      await expect(controller.getPresignedUrl(SESSION_ID, 1)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(repository.eliminar).toHaveBeenCalledWith(SESSION_ID);
     });
   });
 });

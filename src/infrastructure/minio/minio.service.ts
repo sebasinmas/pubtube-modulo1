@@ -7,6 +7,7 @@ import {
   UploadPartCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  AbortMultipartUploadCommand,
   type CompleteMultipartUploadCommandOutput,
   type Part,
 } from '@aws-sdk/client-s3';
@@ -131,6 +132,23 @@ export class MinioService {
     }
 
     return hash.digest('hex');
+  }
+
+  /*
+    Aborta un multipart en curso y libera en Garage las partes ya subidas.
+  */
+  async abortarMultipartUpload(
+    bucket: string,
+    object: string,
+    uploadId: string,
+  ): Promise<void> {
+    await this.client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: bucket,
+        Key: object,
+        UploadId: uploadId,
+      }),
+    );
   }
 
   /*

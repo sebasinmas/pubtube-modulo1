@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import {
   CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
@@ -137,6 +138,20 @@ describe('MinioService', () => {
       await expect(service.calcularChecksumSha256('videos', 'k')).resolves.toBe(
         createHash('sha256').digest('hex'),
       );
+    });
+
+    it('abortarMultipartUpload aborta el multipart indicado', async () => {
+      send.mockResolvedValueOnce({});
+
+      await service.abortarMultipartUpload('videos', 'id/video.mp4', 'up-1');
+
+      const command = send.mock.calls[0][0] as AbortMultipartUploadCommand;
+      expect(command).toBeInstanceOf(AbortMultipartUploadCommand);
+      expect(command.input).toEqual({
+        Bucket: 'videos',
+        Key: 'id/video.mp4',
+        UploadId: 'up-1',
+      });
     });
 
     it('eliminarObjeto envía un DeleteObject al bucket y clave indicados', async () => {
