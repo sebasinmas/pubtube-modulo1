@@ -22,6 +22,20 @@
       "when": 1789751537840,
       "tag": "0002_flawless_ma_gnuci",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790620122333,
+      "tag": "0003_fresh_marten_broadcloak",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790799898686,
+      "tag": "0004_sleepy_red_skull",
+      "breakpoints": true
     }
   ]
 }

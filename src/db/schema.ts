@@ -3,12 +3,14 @@ import {
   uuid,
   varchar,
   timestamp,
-  jsonb,
   pgEnum,
   bigint,
   integer,
   text,
+  unique,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const videoStatusEnum = pgEnum('video_status', [
   'borrador',
@@ -38,15 +40,29 @@ export const visibilityEnum = pgEnum('video_visibility', [
   'unlisted',
 ]);
 
-export const metadataVersions = pgTable('metadata_versions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  videoId: uuid('video_id')
-    .notNull()
-    .references(() => videos.id, { onDelete: 'cascade' }),
-  version: integer('version').notNull(), // Manejo autoincremental por código (1, 2, 3...)
-  title: varchar('title', { length: 100 }).notNull(),
-  description: text('description'),
-  tags: text('tags').array(), // Array nativo de Postgres para evitar tablas pivote innecesarias en historiales
-  visibility: visibilityEnum('visibility').notNull().default('private'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+export const metadataVersions = pgTable(
+  'metadata_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    videoId: uuid('video_id')
+      .notNull()
+      .references(() => videos.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    title: varchar('title', { length: 100 }).notNull(),
+    description: text('description'),
+    tags: text('tags').array(),
+    visibility: visibilityEnum('visibility').notNull().default('private'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    unique('metadata_versions_video_id_version_unique').on(
+      t.videoId,
+      t.version,
+    ),
+    check('metadata_versions_version_positive', sql`${t.version} >= 1`),
+    check(
+      'metadata_versions_title_not_blank',
+      sql`char_length(btrim(${t.title})) > 0`,
+    ),
+  ],
+);
