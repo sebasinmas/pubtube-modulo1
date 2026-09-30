@@ -1,6 +1,6 @@
 {
-  "id": "89622088-708c-44a7-adee-31b3b41af713",
-  "prevId": "91cf8cb2-89a0-476c-8a18-082164a9d8eb",
+  "id": "958ef0c2-b7c4-4a4a-8881-ea39045fc55a",
+  "prevId": "fcdf0504-278a-4408-9197-40fc040dea3c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -58,9 +58,43 @@
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checksum_sha256": {
+          "name": "checksum_sha256",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checksum_declarado": {
+          "name": "checksum_declarado",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "videos_checksum_sha256_unique": {
+          "name": "videos_checksum_sha256_unique",
+          "columns": [
+            {
+              "expression": "checksum_sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

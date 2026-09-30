@@ -13,7 +13,7 @@ export class VideoWorkerService {
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
-  async procesarVideosProgramados() {
+  async procesarVideosProgramados(): Promise<void> {
     try {
       const ahora = new Date();
       const videosPendientes = await this.db
@@ -48,11 +48,15 @@ export class VideoWorkerService {
         } catch (error) {
           this.logger.error(
             `Error de red al consultar YouTube para el video ${video.id}`,
+            error instanceof Error ? error.stack : String(error),
           );
         }
       }
     } catch (error) {
-      this.logger.error(`Error crítico en la ejecución del Cronjob`);
+      this.logger.error(
+        `Error crítico en la ejecución del Cronjob`,
+        error instanceof Error ? error.stack : String(error),
+      );
     }
   }
 }

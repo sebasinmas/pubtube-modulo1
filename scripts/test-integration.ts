@@ -11,7 +11,7 @@ const COMPOSE_CMD =
 function cleanUp(): void {
   try {
     console.log('\n🧹 Limpiando infraestructura efímera de pruebas...');
-    execSync(`${COMPOSE_CMD} down -v`, { stdio: 'inherit' });
+    execSync(`${COMPOSE_CMD} --profile setup down -v`, { stdio: 'inherit' });
     console.log('✅ Entorno de pruebas destruido y recursos liberados.\n');
   } catch (error) {
     console.error('⚠️  Error al intentar limpiar contenedores:', error);
@@ -37,6 +37,11 @@ async function run(): Promise<void> {
       '🚀 1/3: Levantando infraestructura de test (Postgres tmpfs + Garage tmpfs)...',
     );
     execSync(`${COMPOSE_CMD} up -d --wait`, { stdio: 'inherit' });
+    // El aprovisionamiento es one-shot: `run` devuelve su código de salida,
+    // así un fallo en garage-setup aborta la suite en vez de pasar inadvertido.
+    execSync(`${COMPOSE_CMD} run --rm --build garage-setup-test`, {
+      stdio: 'inherit',
+    });
 
     console.log(
       '\n📦 2/3: Aplicando migraciones de Drizzle en la base de datos de test...',

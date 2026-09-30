@@ -8,6 +8,7 @@ import { YoutubeService } from './infrastructure/youtube/youtube.service.js';
 import { VideoRepository } from './modules/videos/repository/video.repository.js';
 import { VideoStateService } from './modules/videos/services/video-state.service.js';
 import { VideoWorkerService } from './modules/videos/services/video-worker.service.js';
+import { VideoCleanupService } from './modules/videos/services/video-cleanup.service.js';
 import { MessageBrokerModule } from './infrastructure/messaging/message-broker.module.js';
 import { VideoUploadController } from './modules/videos/controllers/video-upload.controller.js';
 
@@ -24,6 +25,7 @@ import { VideoUploadController } from './modules/videos/controllers/video-upload
   providers: [
     VideoStateService,
     VideoWorkerService,
+    VideoCleanupService,
     VideoRepository,
     YoutubeService,
     { provide: 'YOUTUBE_SERVICE', useClass: YoutubeService },
