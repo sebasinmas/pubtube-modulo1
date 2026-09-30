@@ -16,6 +16,7 @@ import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  AbortMultipartUploadCommand,
   HeadObjectCommand,
   ListMultipartUploadsCommand,
 } from '@aws-sdk/client-s3';
@@ -298,6 +299,83 @@ describe('US-A5 — checksum e integridad de carga', () => {
     expect(await fila(b)).toBeNull();
     await request(server()).get(`/api/content/upload/${b}/status`).expect(404);
     expect(eventos).toHaveLength(1);
+  }, 30_000);
+
+  it('multipart abortado en el storage (lifecycle): status y complete responden 410 y eliminan la sesión', async () => {
+    const contenido = randomBytes(64 * 1024);
+    const initRes = await iniciar(contenido).expect(201);
+    const id = (initRes.body as { uploadSessionId: string }).uploadSessionId;
+    const etag = await subirParte(id, contenido);
+    const row = (await fila(id))!;
+    await minio.client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: BUCKET,
+        Key: row.object_key,
+        UploadId: row.minio_upload_id,
+      }),
+    );
+
+    const res = await request(server()).get(`/api/content/upload/${id}/status`);
+    expect(res.status).toBe(410);
+    expect(res.body).toMatchObject({ error: 'UPLOAD_SESSION_EXPIRED' });
+    expect(await fila(id)).toBeNull();
+
+    // Una segunda sesión abortada: complete también responde 410.
+    const init2 = await iniciar(contenido).expect(201);
+    const id2 = (init2.body as { uploadSessionId: string }).uploadSessionId;
+    const etag2 = await subirParte(id2, contenido);
+    const row2 = (await fila(id2))!;
+    await minio.client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: BUCKET,
+        Key: row2.object_key,
+        UploadId: row2.minio_upload_id,
+      }),
+    );
+    await completar(id2, etag2).expect(410);
+    expect(await fila(id2)).toBeNull();
+    expect(etag).toBeTruthy();
+    expect(eventos).toHaveLength(0);
+  }, 30_000);
+
+  it('complete repetido sobre una sesión ya completada → 200 idéntico, un solo evento', async () => {
+    const contenido = randomBytes(64 * 1024);
+    const initRes = await iniciar(contenido, sha256(contenido)).expect(201);
+    const id = (initRes.body as { uploadSessionId: string }).uploadSessionId;
+    const etag = await subirParte(id, contenido);
+
+    const primero = await completar(id, etag).expect(200);
+    const segundo = await completar(id, etag).expect(200);
+
+    expect(segundo.body).toEqual(primero.body);
+    expect(eventos).toHaveLength(1);
+  }, 30_000);
+
+  it('tamaño real distinto de sizeBytes → 422 SIZE_MISMATCH, objeto y sesión eliminados', async () => {
+    const contenido = randomBytes(64 * 1024);
+    const initRes = await request(server())
+      .post('/api/content/init')
+      .send({
+        filename: 'clase1.mp4',
+        mimeType: 'video/mp4',
+        sizeBytes: contenido.length + 10,
+      })
+      .expect(201);
+    const id = (initRes.body as { uploadSessionId: string }).uploadSessionId;
+    const etag = await subirParte(id, contenido);
+    const key = (await fila(id))!.object_key;
+
+    const res = await completar(id, etag);
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      error: 'SIZE_MISMATCH',
+      expected: contenido.length + 10,
+      actual: contenido.length,
+    });
+    expect(await objetoExiste(key)).toBe(false);
+    expect(await fila(id)).toBeNull();
+    expect(eventos).toHaveLength(0);
   }, 30_000);
 
   it.each([
