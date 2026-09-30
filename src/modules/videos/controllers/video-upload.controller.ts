@@ -21,6 +21,7 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiGoneResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiPayloadTooLargeResponse,
@@ -47,6 +48,8 @@ import {
 import {
   DuplicateContentErrorDto,
   IntegrityCheckFailedErrorDto,
+  SizeMismatchErrorDto,
+  UploadSessionExpiredErrorDto,
 } from '../dto/upload-errors.dto.js';
 
 const MAX_UPLOAD_SIZE_BYTES = Number(
@@ -207,6 +210,11 @@ export class VideoUploadController {
       'se elimina la sesión y el cliente debe detener la subida.',
     type: DuplicateContentErrorDto,
   })
+  @ApiGoneResponse({
+    description:
+      'El multipart ya no existe en el storage (caducó); se elimina la sesión.',
+    type: UploadSessionExpiredErrorDto,
+  })
   async getUploadStatus(
     @Param('sessionId') sessionId: string,
     @Headers('x-correlation-id') correlationId: string,
@@ -248,6 +256,16 @@ export class VideoUploadController {
       'El SHA-256 calculado no coincide con el checksum declarado. ' +
       'El objeto y la sesión se eliminan.',
     type: IntegrityCheckFailedErrorDto,
+  })
+  @ApiGoneResponse({
+    description:
+      'El multipart ya no existe en el storage (caducó); se elimina la sesión.',
+    type: UploadSessionExpiredErrorDto,
+  })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'El tamaño real del objeto no coincide con sizeBytes (error SIZE_MISMATCH).',
+    type: SizeMismatchErrorDto,
   })
   async completeUpload(
     @Param('sessionId') sessionId: string,

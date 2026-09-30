@@ -33,3 +33,31 @@ export class IntegrityCheckFailedErrorDto {
   @ApiProperty({ description: 'Checksum calculado por el servidor' })
   actual: string;
 }
+
+export class SizeMismatchErrorDto {
+  @ApiProperty({ example: 422 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'SIZE_MISMATCH' })
+  error: 'SIZE_MISMATCH';
+
+  @ApiProperty()
+  message: string;
+
+  @ApiProperty({ description: 'sizeBytes declarado en init' })
+  expected: number;
+
+  @ApiProperty({ description: 'Tamaño real del objeto ensamblado' })
+  actual: number;
+}
+
+export class UploadSessionExpiredErrorDto {
+  @ApiProperty({ example: 410 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'UPLOAD_SESSION_EXPIRED' })
+  error: 'UPLOAD_SESSION_EXPIRED';
+
+  @ApiProperty()
+  message: string;
+}
