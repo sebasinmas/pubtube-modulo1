@@ -306,7 +306,7 @@ describe('US-A5 — checksum e integridad de carga', () => {
     const initRes = await iniciar(contenido).expect(201);
     const id = (initRes.body as { uploadSessionId: string }).uploadSessionId;
     const etag = await subirParte(id, contenido);
-    const row = (await fila(id))!;
+    const row = await fila(id);
     await minio.client.send(
       new AbortMultipartUploadCommand({
         Bucket: BUCKET,
@@ -324,7 +324,7 @@ describe('US-A5 — checksum e integridad de carga', () => {
     const init2 = await iniciar(contenido).expect(201);
     const id2 = (init2.body as { uploadSessionId: string }).uploadSessionId;
     const etag2 = await subirParte(id2, contenido);
-    const row2 = (await fila(id2))!;
+    const row2 = await fila(id2);
     await minio.client.send(
       new AbortMultipartUploadCommand({
         Bucket: BUCKET,
@@ -363,7 +363,7 @@ describe('US-A5 — checksum e integridad de carga', () => {
       .expect(201);
     const id = (initRes.body as { uploadSessionId: string }).uploadSessionId;
     const etag = await subirParte(id, contenido);
-    const key = (await fila(id))!.object_key;
+    const key = (await fila(id)).object_key;
 
     const res = await completar(id, etag);
 
