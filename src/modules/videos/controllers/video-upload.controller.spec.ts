@@ -4,6 +4,7 @@ import { Ajv } from 'ajv';
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   HttpException,
   NotFoundException,
   UnprocessableEntityException,
@@ -38,6 +39,13 @@ const MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
 const OTHER_CONTENT_ID = '22222222-2222-4222-8222-222222222222';
 const CHECKSUM_CALCULADO = 'a'.repeat(64);
 const CHECKSUM_DISTINTO = 'b'.repeat(64);
+
+/** Error que lanza el SDK de S3 cuando el multipart ya no existe. */
+function noSuchUpload(): Error {
+  return Object.assign(new Error('The specified upload does not exist'), {
+    name: 'NoSuchUpload',
+  });
+}
 
 /** Cuerpo JSON que Nest enviaría para una HttpException. */
 async function cuerpoDelError(promesa: Promise<unknown>): Promise<unknown> {
@@ -387,6 +395,24 @@ describe('VideoUploadController', () => {
       );
       expect(minio.listParts).not.toHaveBeenCalled();
     });
+
+    it('responde 410 y elimina la sesión si el multipart ya no existe en el storage', async () => {
+      minio.listParts.mockRejectedValueOnce(noSuchUpload());
+
+      await expect(controller.getUploadStatus(SESSION_ID, '')).rejects.toThrow(
+        GoneException,
+      );
+      expect(repository.eliminar).toHaveBeenCalledWith(SESSION_ID);
+    });
+
+    it('propaga los errores de storage distintos de NoSuchUpload', async () => {
+      minio.listParts.mockRejectedValueOnce(new Error('boom'));
+
+      await expect(controller.getUploadStatus(SESSION_ID, '')).rejects.toThrow(
+        'boom',
+      );
+      expect(repository.eliminar).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /api/content/upload/:sessionId/complete', () => {
@@ -396,6 +422,17 @@ describe('VideoUploadController', () => {
         { PartNumber: 2, ETag: '"etag-2"' },
       ],
     };
+
+    it('responde 410, elimina la sesión y no publica si el multipart ya no existe', async () => {
+      minio.completeMultipartUpload.mockRejectedValueOnce(noSuchUpload());
+
+      await expect(
+        controller.completeUpload(SESSION_ID, body, 'corr-id'),
+      ).rejects.toThrow(GoneException);
+      expect(repository.eliminar).toHaveBeenCalledWith(SESSION_ID);
+      expect(minio.calcularChecksumSha256).not.toHaveBeenCalled();
+      expect(broker.publish).not.toHaveBeenCalled();
+    });
 
     it('ensambla, calcula el checksum, persiste y publica video.uploaded, en ese orden', async () => {
       const result = await controller.completeUpload(
