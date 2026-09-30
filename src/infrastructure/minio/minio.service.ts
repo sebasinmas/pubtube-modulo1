@@ -7,6 +7,7 @@ import {
   UploadPartCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  HeadObjectCommand,
   AbortMultipartUploadCommand,
   type CompleteMultipartUploadCommandOutput,
   type Part,
@@ -132,6 +133,16 @@ export class MinioService {
     }
 
     return hash.digest('hex');
+  }
+
+  /*
+    Tamaño real en bytes del objeto ensamblado (HeadObject, sin descargarlo).
+  */
+  async obtenerTamanoObjeto(bucket: string, object: string): Promise<number> {
+    const response = await this.client.send(
+      new HeadObjectCommand({ Bucket: bucket, Key: object }),
+    );
+    return response.ContentLength ?? 0;
   }
 
   /*

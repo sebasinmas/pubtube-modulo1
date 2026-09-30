@@ -265,6 +265,14 @@ export class VideoUploadController {
 
     const video = await this.videoRepository.buscarPorId(sessionId);
     if (!video) throw new NotFoundException('Sesión de subida no encontrada');
+    // Idempotencia: una sesión ya completada devuelve su resultado.
+    if (video.checksum_sha256) {
+      return {
+        status: 200,
+        contentId: video.id,
+        checksumSha256: video.checksum_sha256,
+      };
+    }
     // Evita ensamblar y hashear un archivo que ya se sabe duplicado.
     await this.detenerSiYaExiste(video);
 
@@ -281,6 +289,22 @@ export class VideoUploadController {
         partesFormateadas,
       ),
     );
+
+    // Se valida el tamaño real antes de gastar tiempo en hashear.
+    const tamanoReal = await this.minioService.obtenerTamanoObjeto(
+      this.bucketName,
+      video.object_key,
+    );
+    if (tamanoReal !== video.size_bytes) {
+      await this.descartarCarga(video, 'ensamblada');
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        error: 'SIZE_MISMATCH',
+        message: 'El tamaño del archivo recibido no coincide con sizeBytes',
+        expected: video.size_bytes,
+        actual: tamanoReal,
+      });
+    }
 
     // Hash del objeto completo leído por stream. No se usa el ETag: en
     // multipart no es el hash del archivo.
