@@ -14,6 +14,7 @@ import {
   Inject,
   ParseIntPipe,
   ConflictException,
+  GoneException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -218,10 +219,12 @@ export class VideoUploadController {
     if (!video) throw new NotFoundException('Sesión de subida no encontrada');
     await this.detenerSiYaExiste(video);
 
-    const parts = await this.minioService.listParts(
-      this.bucketName,
-      video.object_key,
-      video.minio_upload_id,
+    const parts = await this.conSesionVigente(video, () =>
+      this.minioService.listParts(
+        this.bucketName,
+        video.object_key,
+        video.minio_upload_id,
+      ),
     );
 
     return {
@@ -270,11 +273,13 @@ export class VideoUploadController {
       etag: p.ETag,
     }));
 
-    await this.minioService.completeMultipartUpload(
-      this.bucketName,
-      video.object_key,
-      video.minio_upload_id,
-      partesFormateadas,
+    await this.conSesionVigente(video, () =>
+      this.minioService.completeMultipartUpload(
+        this.bucketName,
+        video.object_key,
+        video.minio_upload_id,
+        partesFormateadas,
+      ),
     );
 
     // Hash del objeto completo leído por stream. No se usa el ETag: en
@@ -370,6 +375,35 @@ export class VideoUploadController {
     );
     await this.descartarCarga(video, 'en-curso');
     throw contenidoDuplicado(existente.id);
+  }
+
+  /*
+    Si el multipart ya no existe en el storage (Garage lo abortó por el
+    lifecycle), la sesión no se puede reanudar: se elimina la fila huérfana y
+    se responde 410 en vez de un 500.
+  */
+  private async conSesionVigente<T>(
+    video: VideoRow,
+    operacion: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operacion();
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'NoSuchUpload') throw error;
+      this.logger.warn(
+        `Sesión caducada en el storage [SessionID: ${video.id}]`,
+      );
+      try {
+        await this.videoRepository.eliminar(video.id);
+      } catch (errorBd) {
+        this.logger.error(`No se pudo eliminar la sesión ${video.id}`, errorBd);
+      }
+      throw new GoneException({
+        statusCode: 410,
+        error: 'UPLOAD_SESSION_EXPIRED',
+        message: 'La sesión de subida caducó; inicia una nueva',
+      });
+    }
   }
 
   /*
