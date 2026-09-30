@@ -7,6 +7,7 @@ import {
   CreateMultipartUploadCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { MinioService } from './minio.service.js';
 
@@ -152,6 +153,17 @@ describe('MinioService', () => {
         Key: 'id/video.mp4',
         UploadId: 'up-1',
       });
+    });
+
+    it('obtenerTamanoObjeto devuelve ContentLength de un HeadObject', async () => {
+      send.mockResolvedValueOnce({ ContentLength: 1234 });
+
+      const size = await service.obtenerTamanoObjeto('videos', 'id/video.mp4');
+
+      const command = send.mock.calls[0][0] as HeadObjectCommand;
+      expect(command).toBeInstanceOf(HeadObjectCommand);
+      expect(command.input).toEqual({ Bucket: 'videos', Key: 'id/video.mp4' });
+      expect(size).toBe(1234);
     });
 
     it('eliminarObjeto envía un DeleteObject al bucket y clave indicados', async () => {

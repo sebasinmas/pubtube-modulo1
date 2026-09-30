@@ -89,6 +89,7 @@ describe('VideoUploadController', () => {
     completeMultipartUpload: Mock<MinioService['completeMultipartUpload']>;
     calcularChecksumSha256: Mock<MinioService['calcularChecksumSha256']>;
     eliminarObjeto: Mock<MinioService['eliminarObjeto']>;
+    obtenerTamanoObjeto: Mock<MinioService['obtenerTamanoObjeto']>;
     abortarMultipartUpload: Mock<MinioService['abortarMultipartUpload']>;
     obtenerStorageUrl: Mock<MinioService['obtenerStorageUrl']>;
   };
@@ -133,6 +134,9 @@ describe('VideoUploadController', () => {
       eliminarObjeto: vi
         .fn<MinioService['eliminarObjeto']>()
         .mockResolvedValue(undefined),
+      obtenerTamanoObjeto: vi
+        .fn<MinioService['obtenerTamanoObjeto']>()
+        .mockResolvedValue(10_485_760),
       abortarMultipartUpload: vi
         .fn<MinioService['abortarMultipartUpload']>()
         .mockResolvedValue(undefined),
@@ -524,12 +528,48 @@ describe('VideoUploadController', () => {
     it.todo(
       'responde 400 si el body no trae parts o viene vacío (hoy lanza TypeError -> 500)',
     );
-    it.todo(
-      'rechaza el objeto ensamblado si su tamaño real no coincide con sizeBytes declarado',
-    );
-    it.todo(
-      'es idempotente si se llama dos veces con la misma sesión (hoy el segundo complete falla en S3)',
-    );
+    it('responde 422 SIZE_MISMATCH sin hashear si el tamaño real no coincide con sizeBytes', async () => {
+      minio.obtenerTamanoObjeto.mockResolvedValueOnce(1);
+
+      const cuerpo = await cuerpoDelError(
+        controller.completeUpload(SESSION_ID, body, 'corr-id'),
+      );
+
+      expect(cuerpo).toMatchObject({
+        statusCode: 422,
+        error: 'SIZE_MISMATCH',
+        expected: 10_485_760,
+        actual: 1,
+      });
+      expect(minio.calcularChecksumSha256).not.toHaveBeenCalled();
+      expect(minio.eliminarObjeto).toHaveBeenCalledWith(
+        BUCKET,
+        `${SESSION_ID}/tutorial.mp4`,
+      );
+      expect(repository.eliminar).toHaveBeenCalledWith(SESSION_ID);
+      expect(broker.publish).not.toHaveBeenCalled();
+    });
+
+    it('es idempotente: si la sesión ya se completó devuelve el mismo resultado sin tocar S3 ni republicar', async () => {
+      repository.buscarPorId.mockResolvedValueOnce(
+        videoRow({ checksum_sha256: CHECKSUM_CALCULADO }),
+      );
+
+      const result = await controller.completeUpload(
+        SESSION_ID,
+        body,
+        'corr-id',
+      );
+
+      expect(result).toEqual({
+        status: 200,
+        contentId: SESSION_ID,
+        checksumSha256: CHECKSUM_CALCULADO,
+      });
+      expect(minio.completeMultipartUpload).not.toHaveBeenCalled();
+      expect(minio.calcularChecksumSha256).not.toHaveBeenCalled();
+      expect(broker.publish).not.toHaveBeenCalled();
+    });
 
     it('el payload de video.uploaded cumple docs/contratos/video.uploaded.schema.json', async () => {
       const schema: object = JSON.parse(
