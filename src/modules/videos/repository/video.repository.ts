@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull, lt } from 'drizzle-orm';
 import {
   videos,
   type VideoRow,
@@ -87,6 +87,24 @@ export class VideoRepository {
 
   async eliminar(id: string): Promise<void> {
     await this.db.delete(videos).where(eq(videos.id, id));
+  }
+
+  /*
+    Elimina las cargas que nunca se completaron (sin checksum) y se crearon
+    antes de `antesDe`. Un solo DELETE condicional: si una carga se completa
+    justo ahora, su checksum ya no es NULL y no se toca.
+  */
+  async eliminarAbandonados(antesDe: Date): Promise<VideoRow[]> {
+    return this.db
+      .delete(videos)
+      .where(
+        and(
+          eq(videos.status, 'borrador'),
+          isNull(videos.checksum_sha256),
+          lt(videos.created_at, antesDe),
+        ),
+      )
+      .returning();
   }
 
   async actualizarEstadoSiCoincide(

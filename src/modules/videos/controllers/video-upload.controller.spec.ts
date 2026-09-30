@@ -68,6 +68,7 @@ function videoRow(overrides: Partial<VideoRow> = {}): VideoRow {
     size_bytes: 10_485_760,
     checksum_sha256: null,
     checksum_declarado: null,
+    created_at: new Date(0),
     ...overrides,
   };
 }

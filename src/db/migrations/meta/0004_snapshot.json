@@ -1,0 +1,130 @@
+{
+  "id": "1e2a25d8-3fc0-4f4b-a352-2916761cad31",
+  "prevId": "958ef0c2-b7c4-4a4a-8881-ea39045fc55a",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.videos": {
+      "name": "videos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "status": {
+          "name": "status",
+          "type": "video_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'borrador'"
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_at": {
+          "name": "scheduled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "youtube_url": {
+          "name": "youtube_url",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "varchar(512)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "minio_upload_id": {
+          "name": "minio_upload_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checksum_sha256": {
+          "name": "checksum_sha256",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "checksum_declarado": {
+          "name": "checksum_declarado",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "videos_checksum_sha256_unique": {
+          "name": "videos_checksum_sha256_unique",
+          "columns": [
+            {
+              "expression": "checksum_sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.video_status": {
+      "name": "video_status",
+      "schema": "public",
+      "values": ["borrador", "listo", "programado", "publicado"]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

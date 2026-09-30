@@ -29,6 +29,13 @@
       "when": 1790627651957,
       "tag": "0003_us_a5_checksum_unico",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790801021640,
+      "tag": "0004_borradores_abandonados",
+      "breakpoints": true
     }
   ]
 }
