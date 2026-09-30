@@ -51,7 +51,15 @@ Estado: **implementada en `feat/us-a5-checksum`**. Unitarios, integración, `val
 - `scripts/garage-setup.sh` aplica `PutBucketLifecycleConfiguration` al bucket de contenido con `AbortIncompleteMultipartUpload.DaysAfterInitiation = GARAGE_MULTIPART_ABORT_DAYS` (7 por defecto). Garage solo soporta `AbortIncompleteMultipartUpload` y `Expiration` (ver _reference-manual/s3-compatibility_).
 - La petición se firma con SigV4 usando `curl --aws-sigv4`. Las credenciales se pasan por stdin. Es idempotente, porque el PUT reemplaza la configuración, y después se verifica con un GET. Se comprobó corriéndolo dos veces seguidas.
 - Alternativa manual: `garage bucket cleanup-incomplete-uploads --older-than 7d videos`.
-- Cuando Garage aborta un multipart, la fila `borrador` queda con un `minio_upload_id` inexistente. `status` y `complete` lo detectan (`NoSuchUpload`), eliminan la fila y responden **410 `UPLOAD_SESSION_EXPIRED`**. `part` solo firma la URL localmente, por lo que el error aparece cuando el cliente hace el PUT al storage. Siguen quedando filas `borrador` de sesiones que nadie vuelve a consultar (falta un job de limpieza).
+- Cuando Garage aborta un multipart, la fila `borrador` queda con un `minio_upload_id` inexistente. `status` y `complete` lo detectan (`NoSuchUpload`), eliminan la fila y responden **410 `UPLOAD_SESSION_EXPIRED`**. `part` solo firma la URL localmente, por lo que el error aparece cuando el cliente hace el PUT al storage. Las filas de sesiones que nadie vuelve a consultar las elimina el job de §3.3.
+
+### 3.3 Job de limpieza de borradores abandonados
+
+- `VideoCleanupService` (`@Cron` diario a las 3 AM) ejecuta un único `DELETE … RETURNING` (`VideoRepository.eliminarAbandonados`) sobre filas en `borrador` **sin `checksum_sha256`** y con `created_at` anterior a `BORRADOR_ABANDONADO_DIAS` (por defecto 8, mayor que los 7 de Garage). Como el checksum se escribe solo al completar, una carga que termina justo entonces no se borra.
+- Por cada fila eliminada intenta `AbortMultipartUpload` de forma best-effort; `NoSuchUpload` (Garage ya lo abortó) es el caso normal y se ignora.
+- Se ejecuta en cada instancia de la API; es idempotente, no hace falta lock.
+- Migración `0004_borradores_abandonados`: agrega `videos.created_at` (`DEFAULT now()`). Las filas previas quedan con la fecha de la migración, así que se limpian N días después.
+- Fuera de alcance: lotes, métricas y reintentos.
 
 ## 4. Migración `0003_us_a5_checksum_unico`
 
@@ -81,8 +89,8 @@ ALTER TABLE "videos" DROP COLUMN IF EXISTS "checksum_declarado";
 
 ## 6. Pruebas
 
-- Unitarios (`pnpm run validate`): 8 archivos, **109 passed / 9 todo**.
-- Integración (`pnpm test:integration`, Postgres y Garage v2.4.1 reales en Docker): 3 archivos, **15 passed**. Incluye la subida detenida en curso y la regla de lifecycle.
+- Unitarios (`pnpm run validate`): 9 archivos, **118 passed / 9 todo**.
+- Integración (`pnpm test:integration`, Postgres y Garage v2.4.1 reales en Docker): 4 archivos, **17 passed**. Incluye la subida detenida en curso y la regla de lifecycle.
 - `pnpm run build` OK. Se inspeccionó el OpenAPI generado: `init` → 201/400/409/413/415, `complete` → 200/404/409/422.
 
 ## 7. Pendientes / riesgos
@@ -90,6 +98,6 @@ ALTER TABLE "videos" DROP COLUMN IF EXISTS "checksum_declarado";
 - **CI**: el job de integración solo corre en PR/push a `main` o `workflow_dispatch`. Un PR contra `develop` no lo ejecuta, así que hay que lanzarlo con _Run workflow_ o abrir el PR contra `main`.
 - **Acordar con el núcleo y los consumidores**: el formato de `storageUrl` (`s3://…`) y el plan para retirar los campos extra del payload (`sessionId`, `sizeBytes`, `checksumSha256`, `uploadedAt`).
 - **Acordar con el frontend** si `checksum` pasa a ser obligatorio.
-- Los multipart abandonados los aborta Garage a los `GARAGE_MULTIPART_ABORT_DAYS` días (§3.2), pero la fila `borrador` sigue en la BD (ver la advertencia de §3.2).
+- Los multipart abandonados los aborta Garage a los `GARAGE_MULTIPART_ABORT_DAYS` días (§3.2) y el job de §3.3 elimina después la fila `borrador`.
 - Si falla la limpieza de un objeto (DeleteObject), se loguea y se devuelve igual el 409/422. No hay reintento.
 - El 409 de `init` permite averiguar si un hash dado existe en el catálogo (oráculo de existencia). Es aceptable según el objetivo de la historia, pero conviene saberlo cuando exista autenticación real.
