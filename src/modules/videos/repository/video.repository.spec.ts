@@ -18,8 +18,8 @@ function violacionDeUnicidad(constraint: string): DrizzleQueryError {
 
 /*
   Doble mínimo del query builder de Drizzle: solo las cadenas que usa
-  marcarComoSubido (update→set→where→returning) y buscarPorChecksum
-  (select→from→where→limit).
+  marcarComoSubido (update→set→where→returning), buscarPorChecksum
+  (select→from→where→limit) y eliminarAbandonados (delete→where→returning).
 */
 function crearDb() {
   const returning = vi.fn<() => Promise<unknown[]>>();
@@ -27,6 +27,7 @@ function crearDb() {
   const db = {
     update: () => ({ set: () => ({ where: () => ({ returning }) }) }),
     select: () => ({ from: () => ({ where: () => ({ limit }) }) }),
+    delete: () => ({ where: () => ({ returning }) }),
   };
   return { db: db as unknown as DrizzleDb, returning, limit };
 }
@@ -83,5 +84,29 @@ describe('VideoRepository.marcarComoSubido', () => {
       repository.marcarComoSubido(SESSION_ID, CHECKSUM),
     ).rejects.toBe(original);
     expect(fake.limit).not.toHaveBeenCalled();
+  });
+});
+
+/*
+  El filtro (borrador, sin checksum, más antiguo que el umbral) lo cubre la
+  prueba de integración contra Postgres: este doble no evalúa SQL.
+*/
+describe('VideoRepository.eliminarAbandonados', () => {
+  it('devuelve las filas eliminadas para que el servicio libere su multipart', async () => {
+    const fake = crearDb();
+    fake.returning.mockResolvedValueOnce([{ id: SESSION_ID }]);
+
+    await expect(
+      new VideoRepository(fake.db).eliminarAbandonados(new Date()),
+    ).resolves.toEqual([{ id: SESSION_ID }]);
+  });
+
+  it('devuelve [] si no hay borradores abandonados', async () => {
+    const fake = crearDb();
+    fake.returning.mockResolvedValueOnce([]);
+
+    await expect(
+      new VideoRepository(fake.db).eliminarAbandonados(new Date()),
+    ).resolves.toEqual([]);
   });
 });
