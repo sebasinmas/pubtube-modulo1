@@ -96,6 +96,6 @@ jobs:
       - name: Instalar dependencias (frozen-lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: 🧪 Ejecutar suite de integración (PostgreSQL + MinIO en memoria + E2E)
+      - name: 🧪 Ejecutar suite de integración (PostgreSQL + Garage en memoria + E2E)
         run: pnpm run test:integration
 

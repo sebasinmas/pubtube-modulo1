@@ -1,7 +1,7 @@
 import '@dotenvx/dotenvx/config';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -62,7 +62,9 @@ describe('POST /api/content — flujo real de subida (US-A1)', () => {
   });
 
   it('sube un archivo de 1MB, lo persiste en "borrador" y publica video.uploaded con el envelope completo', async () => {
-    const contenidoFalso = Buffer.alloc(1024 * 1024, 'a');
+    // Bytes aleatorios: con el índice único de checksum (US-A5) un contenido
+    // fijo daría 409 al re-ejecutar la suite contra la misma base.
+    const contenidoFalso = randomBytes(1024 * 1024);
     const checksumEsperado = createHash('sha256')
       .update(contenidoFalso)
       .digest('hex');
@@ -112,6 +114,8 @@ describe('POST /api/content — flujo real de subida (US-A1)', () => {
       source: 'module1-content',
       payload: {
         contentId: uploadSessionId,
+        checksum: checksumEsperado,
+        storageUrl: `s3://${process.env.MINIO_BUCKET_CONTENT ?? 'videos'}/${uploadSessionId}/integration-test.mp4`,
         sizeBytes: contenidoFalso.length,
         checksumSha256: checksumEsperado,
       },
