@@ -67,12 +67,8 @@
           "name": "metadata_versions_video_id_videos_id_fk",
           "tableFrom": "metadata_versions",
           "tableTo": "videos",
-          "columnsFrom": [
-            "video_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["video_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -158,21 +154,12 @@
     "public.video_status": {
       "name": "video_status",
       "schema": "public",
-      "values": [
-        "borrador",
-        "listo",
-        "programado",
-        "publicado"
-      ]
+      "values": ["borrador", "listo", "programado", "publicado"]
     },
     "public.video_visibility": {
       "name": "video_visibility",
       "schema": "public",
-      "values": [
-        "public",
-        "private",
-        "unlisted"
-      ]
+      "values": ["public", "private", "unlisted"]
     }
   },
   "schemas": {},
