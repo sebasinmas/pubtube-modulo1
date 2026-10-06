@@ -20,7 +20,6 @@ function borrador(id: string): VideoRow {
   return {
     id,
     status: 'borrador',
-    metadata: null,
     scheduled_at: null,
     youtube_url: null,
     filename: 'clase.mp4',

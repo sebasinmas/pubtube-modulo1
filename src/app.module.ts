@@ -13,6 +13,7 @@ import { VideoCleanupService } from './modules/videos/services/video-cleanup.ser
 import { MessageBrokerModule } from './infrastructure/messaging/message-broker.module.js';
 import { VideoUploadController } from './modules/videos/controllers/video-upload.controller.js';
 import { VideoMetadataController } from './modules/videos/controllers/video-metadata.controller.js';
+import { HealthController } from './health/health.controller.js';
 
 @Module({
   imports: [
@@ -23,7 +24,11 @@ import { VideoMetadataController } from './modules/videos/controllers/video-meta
     MessageBrokerModule,
     AuthModule,
   ],
-  controllers: [VideoUploadController, VideoMetadataController],
+  controllers: [
+    HealthController,
+    VideoUploadController,
+    VideoMetadataController,
+  ],
   providers: [
     VideoStateService,
     VideoMetadataService,

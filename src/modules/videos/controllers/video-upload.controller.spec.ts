@@ -59,7 +59,6 @@ function videoRow(overrides: Partial<VideoRow> = {}): VideoRow {
   return {
     id: SESSION_ID,
     status: 'borrador',
-    metadata: null,
     scheduled_at: null,
     youtube_url: null,
     filename: 'tutorial.mp4',

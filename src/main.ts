@@ -19,7 +19,7 @@ async function bootstrap() {
     SwaggerModule.createDocument(app, config),
   );
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 
   const url = await app.getUrl();
   logger.log(`API PubTube Módulo 1 escuchando en ${url}`);
