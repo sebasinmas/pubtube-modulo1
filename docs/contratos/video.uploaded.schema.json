@@ -44,7 +44,7 @@
         },
         "storageUrl": {
           "type": "string",
-          "description": "URL de acceso persistente al archivo de video en MinIO/S3."
+          "description": "URL de acceso persistente al archivo de video en el object storage (Garage/S3)."
         }
       },
       "required": ["contentId", "checksum", "storageUrl"]

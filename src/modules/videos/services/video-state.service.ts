@@ -27,7 +27,7 @@ export class VideoStateService {
     contentId: string,
     metadata: MetadataPayload,
     correlationId?: string,
-  ) {
+  ): Promise<{ contentId: string; status: 'listo' }> {
     if (!metadata || !metadata.title || !metadata.visibility) {
       throw new BadRequestException(
         'Metadata incompleta para pasar a estado listo',
@@ -73,7 +73,10 @@ export class VideoStateService {
     };
   }
 
-  async marcarComoProgramado(contentId: string, scheduledAt: Date) {
+  async marcarComoProgramado(
+    contentId: string,
+    scheduledAt: Date,
+  ): Promise<void> {
     if (scheduledAt < new Date()) {
       throw new BadRequestException('La fecha de programación debe ser futura');
     }

@@ -1,106 +1,9 @@
 {
-  "id": "ebbcbe84-eb75-4b63-a1d5-c38c84ec6f37",
-  "prevId": "c211256a-c022-4aa9-b2fc-1c47d10f8b9d",
+  "id": "1e2a25d8-3fc0-4f4b-a352-2916761cad31",
+  "prevId": "958ef0c2-b7c4-4a4a-8881-ea39045fc55a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.metadata_versions": {
-      "name": "metadata_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "video_id": {
-          "name": "video_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tags": {
-          "name": "tags",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "visibility": {
-          "name": "visibility",
-          "type": "video_visibility",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'private'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "metadata_versions_video_id_videos_id_fk": {
-          "name": "metadata_versions_video_id_videos_id_fk",
-          "tableFrom": "metadata_versions",
-          "tableTo": "videos",
-          "columnsFrom": [
-            "video_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "metadata_versions_video_id_version_unique": {
-          "name": "metadata_versions_video_id_version_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "video_id",
-            "version"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "metadata_versions_version_positive": {
-          "name": "metadata_versions_version_positive",
-          "value": "\"metadata_versions\".\"version\" >= 1"
-        },
-        "metadata_versions_title_not_blank": {
-          "name": "metadata_versions_title_not_blank",
-          "value": "char_length(btrim(\"metadata_versions\".\"title\")) > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.videos": {
       "name": "videos",
       "schema": "",
@@ -119,6 +22,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'borrador'"
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "scheduled_at": {
           "name": "scheduled_at",
@@ -161,9 +70,38 @@
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false
+        },
+        "checksum_declarado": {
+          "name": "checksum_declarado",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "videos_checksum_sha256_unique": {
+          "name": "videos_checksum_sha256_unique",
+          "columns": [
+            {
+              "expression": "checksum_sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -176,21 +114,7 @@
     "public.video_status": {
       "name": "video_status",
       "schema": "public",
-      "values": [
-        "borrador",
-        "listo",
-        "programado",
-        "publicado"
-      ]
-    },
-    "public.video_visibility": {
-      "name": "video_visibility",
-      "schema": "public",
-      "values": [
-        "public",
-        "private",
-        "unlisted"
-      ]
+      "values": ["borrador", "listo", "programado", "publicado"]
     }
   },
   "schemas": {},

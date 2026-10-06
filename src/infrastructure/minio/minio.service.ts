@@ -6,6 +6,11 @@ import {
   ListPartsCommand,
   UploadPartCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  AbortMultipartUploadCommand,
+  type CompleteMultipartUploadCommandOutput,
+  type Part,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createHash } from 'node:crypto';
@@ -68,7 +73,11 @@ export class MinioService {
     return response.UploadId!;
   }
 
-  async listParts(bucket: string, object: string, uploadId: string) {
+  async listParts(
+    bucket: string,
+    object: string,
+    uploadId: string,
+  ): Promise<Part[]> {
     const command = new ListPartsCommand({
       Bucket: bucket,
       Key: object,
@@ -84,7 +93,7 @@ export class MinioService {
     object: string,
     uploadId: string,
     parts: { partNumber: number; etag: string }[],
-  ) {
+  ): Promise<CompleteMultipartUploadCommandOutput> {
     const formattedParts = parts.map((p) => ({
       PartNumber: p.partNumber,
       ETag: p.etag,
@@ -124,5 +133,52 @@ export class MinioService {
     }
 
     return hash.digest('hex');
+  }
+
+  /*
+    Tamaño real en bytes del objeto ensamblado (HeadObject, sin descargarlo).
+  */
+  async obtenerTamanoObjeto(bucket: string, object: string): Promise<number> {
+    const response = await this.client.send(
+      new HeadObjectCommand({ Bucket: bucket, Key: object }),
+    );
+    return response.ContentLength ?? 0;
+  }
+
+  /*
+    Aborta un multipart en curso y libera en Garage las partes ya subidas.
+  */
+  async abortarMultipartUpload(
+    bucket: string,
+    object: string,
+    uploadId: string,
+  ): Promise<void> {
+    await this.client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: bucket,
+        Key: object,
+        UploadId: uploadId,
+      }),
+    );
+  }
+
+  /*
+    Borra un objeto ya ensamblado (duplicado o con integridad fallida) para no
+    dejar huérfanos en el bucket. DeleteObject es idempotente en S3/Garage:
+    si la clave no existe responde 204 igual.
+  */
+  async eliminarObjeto(bucket: string, object: string): Promise<void> {
+    await this.client.send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: object }),
+    );
+  }
+
+  /*
+    URL persistente del objeto para el contrato video.uploaded. Se usa el
+    esquema s3:// (bucket + key) en vez de una URL HTTP: no caduca como una
+    prefirmada y no depende del endpoint con el que se firmó la API.
+  */
+  obtenerStorageUrl(bucket: string, object: string): string {
+    return `s3://${bucket}/${object}`;
   }
 }

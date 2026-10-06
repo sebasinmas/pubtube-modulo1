@@ -9,6 +9,7 @@ import {
   text,
   unique,
   check,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -21,18 +22,27 @@ export const videoStatusEnum = pgEnum('video_status', [
 
 export type VideoStatusValue = (typeof videoStatusEnum.enumValues)[number];
 
-export const videos = pgTable('videos', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  status: videoStatusEnum('status').default('borrador').notNull(),
-  //metadata: jsonb('metadata'), DESCARTADO DEL MODELO
-  scheduled_at: timestamp('scheduled_at', { mode: 'date' }),
-  youtube_url: varchar('youtube_url', { length: 255 }),
-  filename: varchar('filename', { length: 255 }).notNull(),
-  object_key: varchar('object_key', { length: 512 }).notNull(),
-  minio_upload_id: varchar('minio_upload_id', { length: 255 }).notNull(),
-  size_bytes: bigint('size_bytes', { mode: 'number' }).notNull(),
-  checksum_sha256: varchar('checksum_sha256', { length: 64 }),
-});
+export const videos = pgTable(
+  'videos',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    status: videoStatusEnum('status').default('borrador').notNull(),
+    scheduled_at: timestamp('scheduled_at', { mode: 'date' }),
+    youtube_url: varchar('youtube_url', { length: 255 }),
+    filename: varchar('filename', { length: 255 }).notNull(),
+    object_key: varchar('object_key', { length: 512 }).notNull(),
+    minio_upload_id: varchar('minio_upload_id', { length: 255 }).notNull(),
+    size_bytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+    checksum_sha256: varchar('checksum_sha256', { length: 64 }),
+    checksum_declarado: varchar('checksum_declarado', { length: 64 }),
+    created_at: timestamp('created_at', { mode: 'date' })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [uniqueIndex('videos_checksum_sha256_unique').on(t.checksum_sha256)],
+);
+
+export type VideoRow = typeof videos.$inferSelect;
 
 export const visibilityEnum = pgEnum('video_visibility', [
   'public',

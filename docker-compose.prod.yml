@@ -1,3 +1,16 @@
+name: pubtube-modulo1-prod
+
+# Producción. Todas las credenciales y secretos son obligatorios y no tienen
+# valores por defecto: deben venir de un .env gestionado fuera del repositorio
+# (secret manager, variables del host, etc.). Generar secretos con:
+#   openssl rand -hex 32
+
+x-logging: &default-logging
+  driver: 'json-file'
+  options:
+    max-size: '10m'
+    max-file: '3'
+
 services:
   # ─────────────────────────────────────────────
   # API – Módulo 1: Gestión de Contenidos (Producción)
@@ -14,12 +27,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: '8000'
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
       MINIO_ENDPOINT: garage
       MINIO_PORT: '3900'
       MINIO_USE_SSL: '${MINIO_USE_SSL:-false}'
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
       MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
       MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
       AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
@@ -27,41 +40,60 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       garage-setup:
         condition: service_completed_successfully
     networks:
       - module1-prod-net
-    logging:
-      driver: 'json-file'
-      options:
-        max-size: '10m'
-        max-file: '3'
+    logging: *default-logging
 
   # ─────────────────────────────────────────────
-  # Base de Datos – PostgreSQL (Producción)
+  # Migraciones Drizzle (one-shot, antes de arrancar la API)
+  # ─────────────────────────────────────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: module1-migrate-prod
+    restart: 'no'
+    command: ['pnpm', 'exec', 'drizzle-kit', 'migrate']
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:?}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - module1-prod-net
+    logging: *default-logging
+
+  # ─────────────────────────────────────────────
+  # Base de Datos – PostgreSQL (Producción, sin puerto publicado)
   # ─────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     container_name: module1-db-prod
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
     volumes:
       - pg_data_prod:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - module1-prod-net
+    logging: *default-logging
 
   # ─────────────────────────────────────────────
   # Almacenamiento de Objetos – Garage (Producción)
-  # --single-node: configura layout mono-nodo automáticamente
-  # --default-bucket: crea key + bucket de contenido vía env vars
+  # Solo se publica la API S3 (necesaria para las URLs prefirmadas);
+  # RPC (3901) y Admin API (3903) quedan dentro de la red interna.
   # ─────────────────────────────────────────────
   garage:
     image: dxflrs/garage:v2.4.1
@@ -72,44 +104,56 @@ services:
     ports:
       - '${MINIO_API_PORT:-9000}:3900'
     environment:
-      GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY}
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?}
+      GARAGE_DEFAULT_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      GARAGE_DEFAULT_SECRET_KEY: ${MINIO_SECRET_KEY:?}
       GARAGE_DEFAULT_BUCKET: ${MINIO_BUCKET_CONTENT:-videos}
     volumes:
       - ./garage.toml:/etc/garage.toml:ro
       - garage_data_prod:/var/lib/garage
+    healthcheck:
+      test: ['CMD', '/garage', 'status']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - module1-prod-net
+    logging: *default-logging
 
   # ─────────────────────────────────────────────
-  # Aprovisionamiento de Buckets en Producción
-  # Usa Alpine (tiene shell) — la imagen dxflrs/garage es distroless (scratch)
+  # Aprovisionamiento de Buckets en Producción (one-shot)
   # ─────────────────────────────────────────────
   garage-setup:
-    image: alpine:3.21
+    build:
+      context: ./scripts
+      dockerfile: garage-setup.Dockerfile
+    image: pubtube-garage-setup:local
     container_name: module1-garage-setup-prod
     restart: 'no'
     depends_on:
       garage:
-        condition: service_started
+        condition: service_healthy
     environment:
       GARAGE_ADMIN_URL: http://garage:3903
-      GARAGE_ADMIN_TOKEN: pubtube-garage-admin-token
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?}
+      GARAGE_S3_URL: http://garage:3900
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      GARAGE_MULTIPART_ABORT_DAYS: ${GARAGE_MULTIPART_ABORT_DAYS:-7}
       MINIO_BUCKET_CONTENT: ${MINIO_BUCKET_CONTENT:-videos}
       MINIO_BUCKET_THUMBNAILS: ${MINIO_BUCKET_THUMBNAILS:-thumbnails}
     volumes:
       - ./scripts/garage-setup.sh:/garage-setup.sh:ro
+    entrypoint: ['/bin/sh', '/garage-setup.sh']
     networks:
       - module1-prod-net
-    entrypoint: ['/bin/sh', '/garage-setup.sh']
+    logging: *default-logging
 
 volumes:
   pg_data_prod:
-    driver: local
   garage_data_prod:
-    driver: local
 
 networks:
   module1-prod-net:
