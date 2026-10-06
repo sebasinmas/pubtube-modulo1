@@ -196,9 +196,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --retry 30 --retry-connrefused --retry-delay 2 --retry-max-time 90 \
-            --fail --silent --show-error \
-            http://127.0.0.1:8000/api/health --output /dev/null
+          gateway_ready=false
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent \
+              http://127.0.0.1:8000/api/health --output /dev/null 2>/dev/null; then
+              gateway_ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$gateway_ready" != true ]]; then
+            printf 'Gateway did not become healthy in time.\n' >&2
+            exit 1
+          fi
 
           token="$(docker exec gateway-under-test python -c \
             'import os,time,jwt; print(jwt.encode({"sub":"module-ci","user_id":"module-ci","role":"admin","exp":int(time.time())+300}, os.environ["JWT_SECRET"], algorithm="HS256"))')"
