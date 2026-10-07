@@ -36,7 +36,6 @@ import { HealthController } from './health/health.controller.js';
     VideoCleanupService,
     VideoRepository,
     YoutubeService,
-    { provide: 'YOUTUBE_SERVICE', useClass: YoutubeService },
   ],
 })
 export class AppModule {}
