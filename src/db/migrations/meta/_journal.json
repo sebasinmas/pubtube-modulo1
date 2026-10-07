@@ -36,6 +36,13 @@
       "when": 1790801021640,
       "tag": "0004_borradores_abandonados",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791342957633,
+      "tag": "0005_metadata_versions_sync",
+      "breakpoints": true
     }
   ]
 }

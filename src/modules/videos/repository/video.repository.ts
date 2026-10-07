@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { eq, and, isNull, lt } from 'drizzle-orm';
+import { eq, and, asc, isNull, lt, lte } from 'drizzle-orm';
 import {
   videos,
   type VideoRow,
@@ -105,6 +105,21 @@ export class VideoRepository {
         ),
       )
       .returning();
+  }
+
+  /*
+    Videos programados cuya fecha de publicación ya venció (US-A4):
+    status = 'programado' AND scheduled_at <= ahora, del más antiguo al más
+    reciente para publicar en orden de programación.
+  */
+  async buscarProgramadosVencidos(ahora: Date): Promise<VideoRow[]> {
+    return this.db
+      .select()
+      .from(videos)
+      .where(
+        and(eq(videos.status, 'programado'), lte(videos.scheduled_at, ahora)),
+      )
+      .orderBy(asc(videos.scheduled_at));
   }
 
   async actualizarEstadoSiCoincide(

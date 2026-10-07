@@ -3,6 +3,9 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { isAxiosError } from 'axios';
 
+const YOUTUBE_OEMBED_URL = 'https://www.youtube.com/oembed';
+const YOUTUBE_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class YoutubeService {
   private readonly logger = new Logger(YoutubeService.name);
@@ -12,8 +15,12 @@ export class YoutubeService {
     youtubeUrl: string,
   ): Promise<{ status: number }> {
     try {
-      const oEmbedUrl = `https://www.youtube.com/oembed?url=${youtubeUrl}&format=json`;
-      const response = await firstValueFrom(this.httpService.get(oEmbedUrl));
+      const response = await firstValueFrom(
+        this.httpService.get(YOUTUBE_OEMBED_URL, {
+          params: { url: youtubeUrl, format: 'json' },
+          timeout: YOUTUBE_TIMEOUT_MS,
+        }),
+      );
 
       return { status: response.status };
     } catch (error) {
