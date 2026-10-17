@@ -30,6 +30,7 @@ import {
   ApiUnsupportedMediaTypeResponse,
 } from '@nestjs/swagger';
 import { randomUUID } from 'node:crypto';
+import { basename } from 'node:path';
 import type { Part } from '@aws-sdk/client-s3';
 import { MinioService } from '../../../infrastructure/minio/minio.service.js';
 import { MessageBrokerService } from '../../../infrastructure/messaging/message-broker.service.js';
@@ -129,6 +130,16 @@ export class VideoUploadController {
     if (!payload.filename) {
       throw new BadRequestException('Falta el nombre del archivo (filename)');
     }
+    if (
+      payload.filename.includes('..') ||
+      payload.filename.includes('/') ||
+      payload.filename.includes('\\')
+    ) {
+      throw new BadRequestException(
+        'Nombre de archivo inválido: no se permiten separadores de ruta ni secuencias ..',
+      );
+    }
+    const sanitizedFilename = basename(payload.filename);
     if (!Number.isFinite(payload.sizeBytes) || payload.sizeBytes <= 0) {
       throw new BadRequestException(
         'Falta declarar el tamaño del archivo (sizeBytes), en bytes',
@@ -154,18 +165,27 @@ export class VideoUploadController {
     }
 
     const videoId = randomUUID();
-    const objectKey = `${videoId}/${payload.filename}`;
+    const objectKey = `${videoId}/${sanitizedFilename}`;
     const minioUploadId =
       await this.minioService.createMultipartUpload(objectKey);
 
-    await this.videoRepository.crearBorrador({
-      id: videoId,
-      filename: payload.filename,
-      object_key: objectKey,
-      minio_upload_id: minioUploadId,
-      size_bytes: payload.sizeBytes,
-      checksum_declarado: checksumDeclarado,
-    });
+    try {
+      await this.videoRepository.crearBorrador({
+        id: videoId,
+        filename: sanitizedFilename,
+        object_key: objectKey,
+        minio_upload_id: minioUploadId,
+        size_bytes: payload.sizeBytes,
+        checksum_declarado: checksumDeclarado,
+      });
+    } catch (error) {
+      await this.minioService
+        .abortarMultipartUpload(this.bucketName, objectKey, minioUploadId)
+        .catch((err) => {
+          this.logger.error('No se pudo abortar multipart huérfano', err);
+        });
+      throw error;
+    }
 
     this.logger.log(
       `Borrador creado [VideoID: ${videoId}] [MinioUploadID: ${minioUploadId}]`,
@@ -188,6 +208,12 @@ export class VideoUploadController {
     @Param('sessionId') sessionId: string,
     @Param('partNumber', ParseIntPipe) partNumber: number,
   ): Promise<{ url: string }> {
+    if (partNumber < 1 || partNumber > 10000) {
+      throw new BadRequestException(
+        'partNumber debe estar entre 1 y 10000 (especificación S3)',
+      );
+    }
+
     const video = await this.videoRepository.buscarPorId(sessionId);
     if (!video) throw new NotFoundException('Sesión de subida no encontrada');
     await this.detenerSiYaExiste(video);
@@ -293,6 +319,16 @@ export class VideoUploadController {
     }
     // Evita ensamblar y hashear un archivo que ya se sabe duplicado.
     await this.detenerSiYaExiste(video);
+
+    if (
+      !payload?.parts ||
+      !Array.isArray(payload.parts) ||
+      payload.parts.length === 0
+    ) {
+      throw new BadRequestException(
+        'Falta la lista de partes (parts) o viene vacía',
+      );
+    }
 
     const partesFormateadas = payload.parts.map((p) => ({
       partNumber: p.PartNumber,
