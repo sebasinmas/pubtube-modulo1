@@ -24,6 +24,8 @@ function createMockDb(video: { id: string; status: VideoStatusValue } | null) {
   const updateWhere = vi.fn().mockResolvedValue(undefined);
   const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
   const update = vi.fn().mockReturnValue({ set: updateSet });
+  const insertValues = vi.fn().mockResolvedValue(undefined);
+  const insert = vi.fn().mockReturnValue({ values: insertValues });
 
   const tx = {
     select: vi.fn().mockReturnValue({
@@ -32,6 +34,7 @@ function createMockDb(video: { id: string; status: VideoStatusValue } | null) {
       }),
     }),
     update,
+    insert,
   };
 
   const transaction = vi.fn((callback: (t: typeof tx) => Promise<unknown>) =>
@@ -44,6 +47,8 @@ function createMockDb(video: { id: string; status: VideoStatusValue } | null) {
     selectFor,
     update,
     updateSet,
+    insert,
+    insertValues,
   };
 }
 
@@ -165,10 +170,37 @@ describe('VideoStateService', () => {
       },
     );
 
-    it.todo(
-      'persiste la metadata en videos.metadata (hoy solo se publica en el evento)',
-    );
-    it.todo('rechaza una visibility fuera de los valores permitidos');
+    it('persiste la metadata en metadata_versions (antes solo se publicaba en el evento)', async () => {
+      const { service, insertValues } = createService({
+        id: VIDEO_ID,
+        status: 'borrador',
+      });
+
+      await service.marcarComoListo(VIDEO_ID, validMetadata);
+
+      expect(insertValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          videoId: VIDEO_ID,
+          title: 'Mi video',
+          visibility: 'public',
+        }),
+      );
+    });
+
+    it('rechaza una visibility fuera de los valores permitidos', async () => {
+      const { service, transaction } = createService({
+        id: VIDEO_ID,
+        status: 'borrador',
+      });
+
+      await expect(
+        service.marcarComoListo(VIDEO_ID, {
+          title: 'Titulo',
+          visibility: 'invalid_vis',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(transaction).not.toHaveBeenCalled();
+    });
   });
 
   describe('marcarComoProgramado (listo → programado)', () => {
@@ -233,8 +265,16 @@ describe('VideoStateService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it.todo(
-      'rechaza una fecha inválida (new Date("x")) — hoy pasa la validación',
-    );
+    it('rechaza una fecha inválida (new Date("x"))', async () => {
+      const { service, transaction } = createService({
+        id: VIDEO_ID,
+        status: 'listo',
+      });
+
+      await expect(
+        service.marcarComoProgramado(VIDEO_ID, new Date('x')),
+      ).rejects.toThrow('Fecha de programación inválida');
+      expect(transaction).not.toHaveBeenCalled();
+    });
   });
 });

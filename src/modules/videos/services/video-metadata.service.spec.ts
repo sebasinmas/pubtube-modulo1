@@ -24,6 +24,8 @@ function createMockDb(options: MockDbOptions = {}) {
   chain.limit = vi.fn(() => Promise.resolve(limitResults.shift() ?? []));
   chain.insert = vi.fn(() => chain);
   chain.values = vi.fn(() => chain);
+  chain.update = vi.fn(() => chain);
+  chain.set = vi.fn(() => chain);
   chain.returning = vi.fn(() => Promise.resolve(insertReturn));
   // Permite awaitear la query sin limit() (p. ej. historial completo).
   chain.then = (

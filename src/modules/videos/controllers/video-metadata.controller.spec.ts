@@ -39,9 +39,17 @@ describe('VideoMetadataController', () => {
       validar: vi.fn().mockResolvedValue(true),
     };
 
+    const mockStateService: any = {
+      marcarComoListo: vi.fn().mockResolvedValue({
+        contentId: 'abc',
+        status: 'listo',
+      }),
+    };
+
     controller = new VideoMetadataController(
       mockMetadataService,
       mockSessionValidator,
+      mockStateService,
     );
   });
 
@@ -131,6 +139,20 @@ describe('VideoMetadataController', () => {
 
       expect(result.metadata).toBeNull();
       expect(result.historial).toEqual([]);
+    });
+  });
+
+  describe('POST /api/content/:contentId/listo', () => {
+    it('valida sesión y delega en videoStateService.marcarComoListo', async () => {
+      const dto: UpdateMetadataDto = {
+        title: 'Video Listo',
+        visibility: VideoVisibility.PUBLIC,
+      };
+
+      const result = await controller.marcarComoListo('abc', dto, 'corr-listo');
+
+      expect(mockSessionValidator.validar).toHaveBeenCalled();
+      expect(result).toEqual({ contentId: 'abc', status: 'listo' });
     });
   });
 
