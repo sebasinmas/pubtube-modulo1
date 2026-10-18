@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Allow } from 'class-validator';
 
 export class UploadedPartDto {
   @ApiProperty({ minimum: 1, maximum: 10000 })
@@ -11,6 +12,7 @@ export class UploadedPartDto {
 }
 
 export class CompleteUploadDto {
+  @Allow()
   @ApiProperty({ type: [UploadedPartDto] })
   parts: UploadedPartDto[];
 }

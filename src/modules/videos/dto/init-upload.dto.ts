@@ -1,22 +1,29 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Allow } from 'class-validator';
 
 /*
-  Sin ValidationPipe todavía: estas clases documentan el contrato en OpenAPI
-  y tipan el body, pero la validación la hace el controlador a mano.
+  Hay un ValidationPipe global con whitelist (main.ts): descarta toda propiedad
+  sin decoradores de class-validator. Por eso cada campo lleva @Allow(), que la
+  conserva sin validarla: la validación sigue haciéndola el controlador a mano.
+  InitUploadResponseDto no pasa por el pipe, así que no lo necesita.
 */
 export class InitUploadDto {
+  @Allow()
   @ApiProperty({ example: 'clase1.mp4' })
   filename: string;
 
+  @Allow()
   @ApiProperty({ enum: ['video/mp4', 'video/quicktime'] })
   mimeType: string;
 
+  @Allow()
   @ApiProperty({
     description: 'Tamaño del archivo en bytes',
     example: 524288000,
   })
   sizeBytes: number;
 
+  @Allow()
   @ApiPropertyOptional({
     description:
       'SHA-256 del archivo completo en hex (64 caracteres), calculado por el cliente. ' +
