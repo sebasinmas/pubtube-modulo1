@@ -8,6 +8,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { MinioService } from './minio.service.js';
 
@@ -174,6 +175,65 @@ describe('MinioService', () => {
       const command = send.mock.calls[0][0] as DeleteObjectCommand;
       expect(command).toBeInstanceOf(DeleteObjectCommand);
       expect(command.input).toEqual({ Bucket: 'videos', Key: 'id/video.mp4' });
+    });
+
+    it('subirObjeto envía un PutObject con el cuerpo y el Content-Type indicados', async () => {
+      send.mockResolvedValueOnce({});
+      const imagen = Buffer.from('imagen');
+
+      await service.subirObjeto(
+        'thumbnails',
+        'id/thumbnail.png',
+        imagen,
+        'image/png',
+      );
+
+      const command = send.mock.calls[0][0] as PutObjectCommand;
+      expect(command).toBeInstanceOf(PutObjectCommand);
+      expect(command.input).toEqual({
+        Bucket: 'thumbnails',
+        Key: 'id/thumbnail.png',
+        Body: imagen,
+        ContentType: 'image/png',
+      });
+    });
+
+    it('subirObjeto propaga el error del storage', async () => {
+      send.mockRejectedValueOnce(new Error('AccessDenied'));
+
+      await expect(
+        service.subirObjeto('thumbnails', 'k', Buffer.alloc(1), 'image/png'),
+      ).rejects.toThrow('AccessDenied');
+    });
+
+    describe('obtenerUrlLectura', () => {
+      let signer: MinioService;
+
+      beforeEach(() => {
+        vi.stubEnv('MINIO_ACCESS_KEY', 'test-access-key');
+        vi.stubEnv('MINIO_SECRET_KEY', 'test-secret-key-123');
+        signer = new MinioService();
+      });
+
+      it('firma un GetObject del objeto y expira en 5 min por defecto', async () => {
+        const url = new URL(
+          await signer.obtenerUrlLectura('videos', 'id/video.mp4'),
+        );
+
+        expect(url.pathname).toBe('/videos/id/video.mp4');
+        expect(url.searchParams.get('X-Amz-Expires')).toBe('300');
+        // Es una lectura: no lleva los parámetros de un UploadPart.
+        expect(url.searchParams.has('partNumber')).toBe(false);
+        expect(url.searchParams.has('uploadId')).toBe(false);
+      });
+
+      it('respeta la expiración indicada', async () => {
+        const url = new URL(
+          await signer.obtenerUrlLectura('videos', 'id/video.mp4', 60),
+        );
+
+        expect(url.searchParams.get('X-Amz-Expires')).toBe('60');
+      });
     });
 
     it('obtenerStorageUrl devuelve una URL s3:// persistente (no prefirmada)', () => {
