@@ -89,6 +89,18 @@ export class VideoRepository {
     await this.db.delete(videos).where(eq(videos.id, id));
   }
 
+  async actualizarMiniatura(
+    id: string,
+    thumbnailUrl: string | null,
+  ): Promise<VideoRow | null> {
+    const [row] = await this.db
+      .update(videos)
+      .set({ thumbnail_url: thumbnailUrl })
+      .where(eq(videos.id, id))
+      .returning();
+    return row ?? null;
+  }
+
   /*
     Elimina las cargas que nunca se completaron (sin checksum) y se crearon
     antes de `antesDe`. Un solo DELETE condicional: si una carga se completa
