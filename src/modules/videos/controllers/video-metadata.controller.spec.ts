@@ -46,10 +46,20 @@ describe('VideoMetadataController', () => {
       }),
     };
 
+    const mockContentQueryService: any = {
+      obtenerContenidos: vi.fn().mockResolvedValue({
+        items: [{ id: 'video-1' }],
+        totalItems: 1,
+        totalPages: 1,
+        currentPage: 1,
+      }),
+    };
+
     controller = new VideoMetadataController(
       mockMetadataService,
       mockSessionValidator,
       mockStateService,
+      mockContentQueryService,
     );
   });
 
@@ -162,6 +172,16 @@ describe('VideoMetadataController', () => {
 
       expect(mockMetadataService.obtenerVersion).toHaveBeenCalledWith('abc', 1);
       expect(result.metadata.version).toBe(1);
+    });
+  });
+
+  describe('GET /api/content', () => {
+    it('delega en contentQueryService.obtenerContenidos con los parámetros recibidos', async () => {
+      const query = { page: 1, size: 10 };
+      const resultado = await controller.consultarCatalogo(query);
+
+      expect(resultado.totalItems).toBe(1);
+      expect(resultado.items).toHaveLength(1);
     });
   });
 });
