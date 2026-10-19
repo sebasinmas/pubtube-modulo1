@@ -1,19 +1,38 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Allow } from 'class-validator';
+import {
+  IsArray,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class UploadedPartDto {
   @ApiProperty({ minimum: 1, maximum: 10000 })
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  @Type(() => Number)
   PartNumber: number;
 
   @ApiProperty({
     description: 'ETag devuelto por el storage al subir la parte',
   })
+  @IsString()
+  @IsNotEmpty()
   ETag: string;
 }
 
 export class CompleteUploadDto {
   @Allow()
   @ApiProperty({ type: [UploadedPartDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UploadedPartDto)
   parts: UploadedPartDto[];
 }
 

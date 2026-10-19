@@ -10,6 +10,7 @@ import {
   unique,
   check,
   uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -40,7 +41,10 @@ export const videos = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (t) => [uniqueIndex('videos_checksum_sha256_unique').on(t.checksum_sha256)],
+  (t) => [
+    uniqueIndex('videos_checksum_sha256_unique').on(t.checksum_sha256),
+    index('videos_status_idx').on(t.status),
+  ],
 );
 
 export type VideoRow = typeof videos.$inferSelect;
