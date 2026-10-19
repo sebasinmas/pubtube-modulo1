@@ -5,6 +5,7 @@ import {
   CompleteMultipartUploadCommand,
   ListPartsCommand,
   UploadPartCommand,
+  PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
@@ -170,6 +171,42 @@ export class MinioService {
   async eliminarObjeto(bucket: string, object: string): Promise<void> {
     await this.client.send(
       new DeleteObjectCommand({ Bucket: bucket, Key: object }),
+    );
+  }
+
+  /*
+    Sube un objeto pequeño de una sola vez (miniaturas). Para videos se sigue
+    usando el multipart con URLs prefirmadas.
+  */
+  async subirObjeto(
+    bucket: string,
+    object: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: object,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  }
+
+  /*
+    URL prefirmada de lectura de corta duración. La usará ffmpeg para extraer
+    un frame sin descargar el video completo.
+  */
+  async obtenerUrlLectura(
+    bucket: string,
+    object: string,
+    expiryInSeconds: number = 300,
+  ): Promise<string> {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: bucket, Key: object }),
+      { expiresIn: expiryInSeconds },
     );
   }
 

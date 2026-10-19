@@ -43,6 +43,13 @@
       "when": 1791342957633,
       "tag": "0005_metadata_versions_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792200157368,
+      "tag": "0006_loving_giant_girl",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Allow } from 'class-validator';
+
+/*
+  Hay un ValidationPipe global con whitelist (main.ts): descarta toda propiedad
+  sin decoradores de class-validator. Por eso cada campo lleva @Allow(), que la
+  conserva sin validarla: la validación sigue haciéndola el controlador a mano.
+  InitUploadResponseDto no pasa por el pipe, así que no lo necesita.
+*/
 import {
   IsInt,
   IsNotEmpty,
@@ -11,16 +19,19 @@ import {
 import { Type } from 'class-transformer';
 
 export class InitUploadDto {
+  @Allow()
   @ApiProperty({ example: 'clase1.mp4' })
   @IsString()
   @IsNotEmpty()
   filename: string;
 
+  @Allow()
   @ApiProperty({ enum: ['video/mp4', 'video/quicktime'] })
   @IsString()
   @IsIn(['video/mp4', 'video/quicktime'])
   mimeType: string;
 
+  @Allow()
   @ApiProperty({
     description: 'Tamaño del archivo en bytes',
     example: 524288000,
@@ -30,6 +41,7 @@ export class InitUploadDto {
   @Type(() => Number)
   sizeBytes: number;
 
+  @Allow()
   @ApiPropertyOptional({
     description:
       'SHA-256 del archivo completo en hex (64 caracteres), calculado por el cliente. ' +

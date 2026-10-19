@@ -30,6 +30,7 @@ export const videos = pgTable(
     status: videoStatusEnum('status').default('borrador').notNull(),
     scheduled_at: timestamp('scheduled_at', { mode: 'date' }),
     youtube_url: varchar('youtube_url', { length: 255 }),
+    thumbnail_url: varchar('thumbnail_url', { length: 512 }),
     filename: varchar('filename', { length: 255 }).notNull(),
     object_key: varchar('object_key', { length: 512 }).notNull(),
     minio_upload_id: varchar('minio_upload_id', { length: 255 }).notNull(),

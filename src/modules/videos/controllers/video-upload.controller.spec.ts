@@ -62,6 +62,7 @@ function videoRow(overrides: Partial<VideoRow> = {}): VideoRow {
     status: 'borrador',
     scheduled_at: null,
     youtube_url: null,
+    thumbnail_url: null,
     filename: 'tutorial.mp4',
     object_key: `${SESSION_ID}/tutorial.mp4`,
     minio_upload_id: 'upload-id-777',

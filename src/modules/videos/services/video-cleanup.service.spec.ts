@@ -22,6 +22,7 @@ function borrador(id: string): VideoRow {
     status: 'borrador',
     scheduled_at: null,
     youtube_url: null,
+    thumbnail_url: null,
     filename: 'clase.mp4',
     object_key: `${id}/clase.mp4`,
     minio_upload_id: `upload-${id}`,

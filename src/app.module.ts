@@ -15,6 +15,8 @@ import { MessageBrokerModule } from './infrastructure/messaging/message-broker.m
 import { VideoUploadController } from './modules/videos/controllers/video-upload.controller.js';
 import { VideoMetadataController } from './modules/videos/controllers/video-metadata.controller.js';
 import { HealthController } from './health/health.controller.js';
+import { VideoThumbnailService } from './modules/videos/services/video-thumbnail.service.js';
+import { VideoThumbnailController } from './modules/videos/controllers/video-thumbnail.controller.js';
 
 @Module({
   imports: [
@@ -29,6 +31,7 @@ import { HealthController } from './health/health.controller.js';
     HealthController,
     VideoUploadController,
     VideoMetadataController,
+    VideoThumbnailController,
   ],
   providers: [
     VideoStateService,
@@ -38,6 +41,7 @@ import { HealthController } from './health/health.controller.js';
     VideoCleanupService,
     VideoRepository,
     YoutubeService,
+    VideoThumbnailService,
   ],
 })
 export class AppModule {}

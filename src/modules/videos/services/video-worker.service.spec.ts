@@ -17,6 +17,7 @@ function scheduledVideo(
     status: 'programado',
     scheduled_at: new Date('2026-10-01T10:00:00.000Z'),
     youtube_url: youtubeUrl,
+    thumbnail_url: null,
     filename: `${id}.mp4`,
     object_key: `${id}/${id}.mp4`,
     minio_upload_id: `upload-${id}`,

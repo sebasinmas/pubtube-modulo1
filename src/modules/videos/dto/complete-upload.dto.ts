@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Allow } from 'class-validator';
 import {
   IsArray,
   IsInt,
@@ -27,6 +28,7 @@ export class UploadedPartDto {
 }
 
 export class CompleteUploadDto {
+  @Allow()
   @ApiProperty({ type: [UploadedPartDto] })
   @IsArray()
   @ValidateNested({ each: true })
