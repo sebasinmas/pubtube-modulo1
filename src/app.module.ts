@@ -10,6 +10,7 @@ import { VideoMetadataService } from './modules/videos/services/video-metadata.s
 import { VideoStateService } from './modules/videos/services/video-state.service.js';
 import { VideoWorkerService } from './modules/videos/services/video-worker.service.js';
 import { VideoCleanupService } from './modules/videos/services/video-cleanup.service.js';
+import { ContentQueryService } from './modules/videos/services/content-query.service.js';
 import { MessageBrokerModule } from './infrastructure/messaging/message-broker.module.js';
 import { VideoUploadController } from './modules/videos/controllers/video-upload.controller.js';
 import { VideoMetadataController } from './modules/videos/controllers/video-metadata.controller.js';
@@ -32,6 +33,7 @@ import { HealthController } from './health/health.controller.js';
   providers: [
     VideoStateService,
     VideoMetadataService,
+    ContentQueryService,
     VideoWorkerService,
     VideoCleanupService,
     VideoRepository,

@@ -21,6 +21,7 @@ import type { SessionValidator } from '../../../infrastructure/auth/session-vali
 import type { VideoRepository } from '../repository/video.repository.js';
 import type { VideoRow } from '../../../db/schema.js';
 import { ChecksumDuplicadoError } from '../video.errors.js';
+import type { CompleteUploadDto } from '../dto/complete-upload.dto.js';
 
 const { GENERATED_UUID } = vi.hoisted(() => ({
   GENERATED_UUID: '00000000-0000-4000-8000-000000000001',
@@ -338,12 +339,27 @@ describe('VideoUploadController', () => {
       });
     });
 
-    it.todo(
-      'rechaza filenames con separadores de ruta (../, /) que alteran la object key',
-    );
-    it.todo(
-      'aborta el multipart upload si falla la creación del borrador en BD (hoy queda huérfano)',
-    );
+    it('rechaza filenames con separadores de ruta (../, /) que alteran la object key', async () => {
+      await expect(
+        controller.initUpload(
+          validInitPayload({ filename: '../../etc/passwd' }),
+          '',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(minio.createMultipartUpload).not.toHaveBeenCalled();
+    });
+
+    it('aborta el multipart upload si falla la creación del borrador en BD (hoy queda huérfano)', async () => {
+      repository.crearBorrador.mockRejectedValueOnce(new Error('bd error'));
+      await expect(
+        controller.initUpload(validInitPayload(), ''),
+      ).rejects.toThrow('bd error');
+      expect(minio.abortarMultipartUpload).toHaveBeenCalledWith(
+        BUCKET,
+        `${GENERATED_UUID}/tutorial.mp4`,
+        'upload-id-777',
+      );
+    });
   });
 
   describe('GET /api/content/:sessionId/part/:partNumber', () => {
@@ -370,7 +386,15 @@ describe('VideoUploadController', () => {
       expect(minio.getPresignedUrl).not.toHaveBeenCalled();
     });
 
-    it.todo('rechaza partNumber fuera del rango S3 (1..10000)');
+    it('rechaza partNumber fuera del rango S3 (1..10000)', async () => {
+      await expect(controller.getPresignedUrl(SESSION_ID, 0)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(
+        controller.getPresignedUrl(SESSION_ID, 10001),
+      ).rejects.toThrow(BadRequestException);
+      expect(minio.getPresignedUrl).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /api/content/upload/:sessionId/status', () => {
@@ -525,9 +549,19 @@ describe('VideoUploadController', () => {
       expect(broker.publish).not.toHaveBeenCalled();
     });
 
-    it.todo(
-      'responde 400 si el body no trae parts o viene vacío (hoy lanza TypeError -> 500)',
-    );
+    it('responde 400 si el body no trae parts o viene vacío (hoy lanza TypeError -> 500)', async () => {
+      await expect(
+        controller.completeUpload(
+          SESSION_ID,
+          {} as unknown as CompleteUploadDto,
+          '',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        controller.completeUpload(SESSION_ID, { parts: [] }, ''),
+      ).rejects.toThrow(BadRequestException);
+      expect(minio.completeMultipartUpload).not.toHaveBeenCalled();
+    });
     it('responde 422 SIZE_MISMATCH sin hashear si el tamaño real no coincide con sizeBytes', async () => {
       minio.obtenerTamanoObjeto.mockResolvedValueOnce(1);
 

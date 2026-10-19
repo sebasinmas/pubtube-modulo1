@@ -5,7 +5,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { videos } from '../../../db/schema.js';
+import { metadataVersions, videos } from '../../../db/schema.js';
 import type { DrizzleDb } from '../../../db/types.js';
 import { MessageBrokerService } from '../../../infrastructure/messaging/message-broker.service.js';
 
@@ -15,6 +15,8 @@ export interface MetadataPayload {
   description?: string;
   tags?: string[];
 }
+
+const VISIBILIDADES_VALIDAS = ['public', 'private', 'unlisted'];
 
 @Injectable()
 export class VideoStateService {
@@ -31,6 +33,12 @@ export class VideoStateService {
     if (!metadata || !metadata.title || !metadata.visibility) {
       throw new BadRequestException(
         'Metadata incompleta para pasar a estado listo',
+      );
+    }
+
+    if (!VISIBILIDADES_VALIDAS.includes(metadata.visibility)) {
+      throw new BadRequestException(
+        `Visibilidad inválida: debe ser una de ${VISIBILIDADES_VALIDAS.join(', ')}`,
       );
     }
 
@@ -53,6 +61,15 @@ export class VideoStateService {
         .update(videos)
         .set({ status: 'listo' })
         .where(eq(videos.id, contentId));
+
+      await tx.insert(metadataVersions).values({
+        videoId: contentId,
+        version: 1,
+        title: metadata.title,
+        description: metadata.description ?? null,
+        tags: metadata.tags ?? null,
+        visibility: metadata.visibility as 'public' | 'private' | 'unlisted',
+      });
     });
 
     await this.broker.publish(
@@ -77,6 +94,10 @@ export class VideoStateService {
     contentId: string,
     scheduledAt: Date,
   ): Promise<void> {
+    if (!(scheduledAt instanceof Date) || isNaN(scheduledAt.getTime())) {
+      throw new BadRequestException('Fecha de programación inválida');
+    }
+
     if (scheduledAt < new Date()) {
       throw new BadRequestException('La fecha de programación debe ser futura');
     }

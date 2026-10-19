@@ -24,7 +24,11 @@ export class VideoMetadataService {
     contentId: string,
     metadata: UpdateMetadataDto,
     correlationId?: string,
-  ) {
+  ): Promise<{
+    status: number;
+    contentId: string;
+    metadata: VideoMetadata;
+  }> {
     const fila = await this.db.transaction(async (tx) => {
       const [video] = await tx
         .select()
@@ -35,6 +39,13 @@ export class VideoMetadataService {
 
       if (!video) {
         throw new NotFoundException('Video no encontrado');
+      }
+
+      if (video.status === 'borrador') {
+        await tx
+          .update(videos)
+          .set({ status: 'listo' })
+          .where(eq(videos.id, contentId));
       }
 
       const [ultima] = await tx
@@ -81,7 +92,11 @@ export class VideoMetadataService {
   }
 
   /** Lee la última versión de metadatos de un video (null si aún no tiene). */
-  async obtenerMetadatos(contentId: string) {
+  async obtenerMetadatos(contentId: string): Promise<{
+    status: number;
+    contentId: string;
+    metadata: VideoMetadata | null;
+  }> {
     const [video] = await this.db
       .select({ id: videos.id })
       .from(videos)
@@ -110,7 +125,12 @@ export class VideoMetadataService {
    * Devuelve la versión vigente de metadatos junto con el historial completo
    * de versiones del video, de la más reciente a la más antigua.
    */
-  async obtenerMetadatosConHistorial(contentId: string) {
+  async obtenerMetadatosConHistorial(contentId: string): Promise<{
+    status: number;
+    contentId: string;
+    metadata: VideoMetadata | null;
+    historial: VideoMetadata[];
+  }> {
     const [video] = await this.db
       .select({ id: videos.id })
       .from(videos)
@@ -136,7 +156,14 @@ export class VideoMetadataService {
   }
 
   /** Lee una versión puntual de metadatos. */
-  async obtenerVersion(contentId: string, version: number) {
+  async obtenerVersion(
+    contentId: string,
+    version: number,
+  ): Promise<{
+    status: number;
+    contentId: string;
+    metadata: VideoMetadata;
+  }> {
     const [fila] = await this.db
       .select()
       .from(metadataVersions)

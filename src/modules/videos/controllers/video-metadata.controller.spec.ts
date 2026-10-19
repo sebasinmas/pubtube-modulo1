@@ -39,9 +39,27 @@ describe('VideoMetadataController', () => {
       validar: vi.fn().mockResolvedValue(true),
     };
 
+    const mockStateService: any = {
+      marcarComoListo: vi.fn().mockResolvedValue({
+        contentId: 'abc',
+        status: 'listo',
+      }),
+    };
+
+    const mockContentQueryService: any = {
+      obtenerContenidos: vi.fn().mockResolvedValue({
+        items: [{ id: 'video-1' }],
+        totalItems: 1,
+        totalPages: 1,
+        currentPage: 1,
+      }),
+    };
+
     controller = new VideoMetadataController(
       mockMetadataService,
       mockSessionValidator,
+      mockStateService,
+      mockContentQueryService,
     );
   });
 
@@ -134,12 +152,36 @@ describe('VideoMetadataController', () => {
     });
   });
 
+  describe('POST /api/content/:contentId/listo', () => {
+    it('valida sesión y delega en videoStateService.marcarComoListo', async () => {
+      const dto: UpdateMetadataDto = {
+        title: 'Video Listo',
+        visibility: VideoVisibility.PUBLIC,
+      };
+
+      const result = await controller.marcarComoListo('abc', dto, 'corr-listo');
+
+      expect(mockSessionValidator.validar).toHaveBeenCalled();
+      expect(result).toEqual({ contentId: 'abc', status: 'listo' });
+    });
+  });
+
   describe('GET /api/content/:contentId/metadata/versions/:version', () => {
     it('devuelve la versión puntual solicitada', async () => {
       const result = await controller.obtenerVersion('abc', 1);
 
       expect(mockMetadataService.obtenerVersion).toHaveBeenCalledWith('abc', 1);
       expect(result.metadata.version).toBe(1);
+    });
+  });
+
+  describe('GET /api/content', () => {
+    it('delega en contentQueryService.obtenerContenidos con los parámetros recibidos', async () => {
+      const query = { page: 1, size: 10 };
+      const resultado = await controller.consultarCatalogo(query);
+
+      expect(resultado.totalItems).toBe(1);
+      expect(resultado.items).toHaveLength(1);
     });
   });
 });
