@@ -37,7 +37,7 @@ Sus responsabilidades abarcan desde la ingesta de los archivos multimedia hasta 
 
 La documentación OpenAPI (Swagger UI) queda disponible en `/api/docs` con la API corriendo.
 
-Las decisiones de arquitectura se documentan en [`ADR/`](ADR/). En particular, [ADR 002](ADR/002-migracion-minio-a-garage.md) explica la migración de MinIO a Garage.
+Las decisiones de arquitectura se documentan en [`ADR/`](ADR/). En particular, [ADR 0002](ADR/0002-migracion-minio-a-garage.md) explica la migración de MinIO a Garage.
 
 > **Nombres heredados de MinIO:** el almacenamiento ya **no** es MinIO, pero por decisión explícita del ADR 002 se conservan la clase `MinioService` (`src/infrastructure/minio/`), la columna `minio_upload_id` y las variables `MINIO_*`. Todas apuntan a Garage vía la API S3 estándar.
 

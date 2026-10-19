@@ -1,4 +1,4 @@
-# ADR 01: Tech Stack para PubTube
+# ADR 0001: Tech Stack para PubTube
 
 > **Nota:** Se utilizó Inteligencia Artificial (IA) como apoyo en la redacción de este documento. Todas las decisiones arquitectónicas y técnicas aquí reflejadas fueron debidamente sopesadas por el equipo y discutidas previamente en clases.
 
