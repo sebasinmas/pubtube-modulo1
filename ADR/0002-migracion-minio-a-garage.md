@@ -1,4 +1,4 @@
-# ADR 02: Migración de MinIO a Garage como Object Storage S3-Compatible
+# ADR 0002: Migración de MinIO a Garage como Object Storage S3-Compatible
 
 > **Nota:** Se utilizó Inteligencia Artificial (IA) como apoyo en la redacción de este documento. La decisión arquitectónica fue tomada por el equipo ante un evento externo que rompió la pipeline de CI/CD.
 
